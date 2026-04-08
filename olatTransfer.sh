@@ -8,12 +8,29 @@ WEBDAV_PREFIX="/Volumes/$SERVER"
 # USAGE
 
 usage() {
-    echo "Usage: $(basename "$0") <source> <destination>"
+    echo "Usage: $(basename "$0") [-d] <source> <destination>"
     echo "  One of source or destination must begin with $WEBDAV_PREFIX"
     echo "  Upload example: $(basename "$0") \"/local/path\" \"$WEBDAV_PREFIX/remote/path\""
     echo "  Download example: $(basename "$0") \"$WEBDAV_PREFIX/remote/path\" \"/local/path\""
+    echo "  -d   Execute the final 'eject' and status message."
     exit 1
 }
+
+# ------------------------------------------------------------------
+# OPTION PARSING -----------------------------------------------------
+
+# default: do NOT eject at the end
+DO_EJECT=0
+
+while getopts "d" opt; do
+  case $opt in
+    d) DO_EJECT=1 ;;
+    *) usage ;;          # unknown option -> show help
+  esac
+done
+
+# shift the processed options out of $@ so that $1/$2 are the positional args
+shift $((OPTIND - 1))
 
 # ------------------------------------------------------------------
 # PARSE ARGUMENTS
@@ -27,7 +44,6 @@ DEST="$2"
 
 # ------------------------------------------------------------------
 # FETCH PASSWORD FROM THE KEYCHAIN
-
 
 USERNAME=$(security find-internet-password -l "lms.uzh.ch" 2>/dev/null \
            | awk -F'"' '/acct/ {print $4}')
@@ -131,5 +147,9 @@ fi
 # ------------------------------------------------------------------
 # CLEAN UP
 
-osascript -e "tell application \"Finder\" to eject \"$SERVER\""
-echo "Disconnected from WebDAV."
+if [[ $DO_EJECT -eq 1 ]]; then
+    osascript -e "tell application \"Finder\" to eject \"$SERVER\""
+    echo "Disconnected from WebDAV."
+else
+    echo "WebDAV connection remains mounted."
+fi
