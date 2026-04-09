@@ -134,7 +134,7 @@ echo "Direction: $DIRECTION"
 
 echo "Starting rsync------------------"
 
-rsync -av --progress --inplace --exclude='.*' $RSYNC_EXTRA_FLAGS "$SRC/" "$DEST/"
+rsync -av --progress --inplace --size-only --exclude='.*' $RSYNC_EXTRA_FLAGS "$SRC/" "$DEST/"
 
 RSYNC_EXIT=$?
 

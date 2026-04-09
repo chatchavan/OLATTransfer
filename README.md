@@ -26,3 +26,9 @@ olatTransfer.sh [-d] <source> <destination>
    6. You can now disconnect from the WebDAV by clicking ⏏ button on the Finder's side bar. (If you cannot find it, it's OK. Once you restart your computer, it will be disconnected automatically.)
 
 - When you run the script for the first time, there will be several dialog boxes asking for permissions (folder access, Keychain access). In some dialog box, the "Always allow" will let you run this script without being asked for permission in the future.
+
+
+## Pragmatic choices made in this script
+- The script calls `rsync` with the `--size-only` argument. This means that if a file at the destination has the same size as the source, that file is not transferred. We chose this because the OLAT WebDAV server at UZH doesn't preserve modification time.
+
+- By default, calling `olatTransfer.sh` without the option `-d` keeps the connection open. This prevents the client's IP from getting banned by UZH OLAT connection limits.
