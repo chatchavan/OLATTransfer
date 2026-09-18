@@ -3,13 +3,38 @@ Script for macOS to transfer files to UZH OLAT
 
 ## Usage
 ```
-olatTransfer.sh [-d] <source> <destination>
+olatTransfer.sh [-d] [-q] <source> <destination>
   One of source or destination must begin with /Volumes/lms.uzh.ch
   -d   Execute the final eject and disconnect steps after transfer.
+  -q   Quick push (upload only): only sync top-level source folders that
+       contain a file changed within the lookback window (see config.yml).
+       Never deletes remote files/folders; run a normal upload for that.
   Upload example: olatTransfer.sh "/local/path" "/Volumes/lms.uzh.ch/remote/path"
   Download example: olatTransfer.sh "/Volumes/lms.uzh.ch/remote/path" "/local/path"
+  Quick upload example: olatTransfer.sh -q "/local/path" "/Volumes/lms.uzh.ch/remote/path"
 ```
 *If you omit `-d`, the WebDAV volume remains mounted after the transfer.*
+
+## Quick push (`-q`)
+
+Uploading a whole course folder with plain rsync is slow because it has to
+list every remote file over WebDAV, even when almost nothing changed since
+last time (e.g. pushing this week's lecture material). `-q` speeds this up
+by skipping the whole-tree comparison: it only looks at the local source,
+picks the top-level folders (e.g. `w05-topic`) that contain a file modified
+within the last N days, and uploads just those folders.
+
+- The lookback window `N` is configured in [`config.yml`](config.yml)
+  (`lookback_days`, default 14) — one setting shared by all courses.
+- Quick push never passes `--delete`. If you rename or remove a folder
+  locally, run a normal (non-`-q`) upload afterwards to reconcile the
+  remote side — see [`example-upload.command`](example-upload.command).
+- Loose files sitting directly in the source folder (not inside a
+  subfolder) are not picked up by quick push, only files inside top-level
+  subfolders are considered.
+- See [`example-quick-upload.command`](example-quick-upload.command) for a
+  template to copy per course, alongside your existing full-upload
+  `.command` file.
 
 ## Requirements
 - Check if your macOS `rsync` supports the argument `--inplace`. This can be done by executing the following in the Terminal: `rsync --help | grep inplace`. It should show a line with `--inplace`.

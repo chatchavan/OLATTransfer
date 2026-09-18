@@ -1,0 +1,6 @@
+# Configuration for olatTransfer.sh
+
+# Quick push (-q): how many days back to look for locally changed files when
+# deciding which top-level source folders to upload. Only whole numbers are
+# read; comments and blank lines are ignored.
+lookback_days: 14

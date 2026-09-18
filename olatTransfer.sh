@@ -4,15 +4,23 @@
 SERVER="lms.uzh.ch"
 WEBDAV_PREFIX="/Volumes/$SERVER"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG_FILE="$SCRIPT_DIR/config.yml"
+DEFAULT_LOOKBACK_DAYS=14
+
 # ------------------------------------------------------------------
 # USAGE
 
 usage() {
-    echo "Usage: $(basename "$0") [-d] <source> <destination>"
+    echo "Usage: $(basename "$0") [-d] [-q] <source> <destination>"
     echo "  One of source or destination must begin with $WEBDAV_PREFIX"
     echo "  Upload example: $(basename "$0") \"/local/path\" \"$WEBDAV_PREFIX/remote/path\""
     echo "  Download example: $(basename "$0") \"$WEBDAV_PREFIX/remote/path\" \"/local/path\""
     echo "  -d   Execute the final 'eject' and status message."
+    echo "  -q   Quick push (upload only): only sync top-level source folders that"
+    echo "       contain a file changed within the lookback window. Never deletes"
+    echo "       remote files/folders; run a normal upload for that. Lookback window"
+    echo "       is read from $CONFIG_FILE (key: lookback_days)."
     exit 1
 }
 
@@ -21,10 +29,12 @@ usage() {
 
 # default: do NOT eject at the end
 DO_EJECT=0
+QUICK_MODE=0
 
-while getopts "d" opt; do
+while getopts "dq" opt; do
   case $opt in
     d) DO_EJECT=1 ;;
+    q) QUICK_MODE=1 ;;
     *) usage ;;          # unknown option -> show help
   esac
 done
@@ -41,6 +51,22 @@ fi
 
 SRC="$1"
 DEST="$2"
+
+# ------------------------------------------------------------------
+# READ QUICK-MODE CONFIG (config.yml, key: lookback_days)
+
+read_lookback_days() {
+    local value=""
+    if [[ -f "$CONFIG_FILE" ]]; then
+        value=$(grep -E '^[[:space:]]*lookback_days:' "$CONFIG_FILE" \
+                 | head -1 \
+                 | sed -E 's/^[[:space:]]*lookback_days:[[:space:]]*([0-9]+).*/\1/')
+    fi
+    if [[ -z $value ]]; then
+        value=$DEFAULT_LOOKBACK_DAYS
+    fi
+    echo "$value"
+}
 
 # ------------------------------------------------------------------
 # FETCH PASSWORD FROM THE KEYCHAIN
@@ -125,18 +151,57 @@ else
     usage
 fi
 
+if [[ $QUICK_MODE -eq 1 && "$DIRECTION" != "upload" ]]; then
+    echo "❌  Quick mode (-q) only supports uploads (local source -> WebDAV destination)."
+    exit 1
+fi
+
+if [[ $QUICK_MODE -eq 1 ]]; then
+    RSYNC_EXTRA_FLAGS=""   # quick mode never deletes; run a normal upload for that
+fi
+
 echo "Source:      $SRC"
 echo "Destination: $DEST"
 echo "Direction: $DIRECTION"
+[[ $QUICK_MODE -eq 1 ]] && echo "Mode: quick push (recently changed top-level folders only)"
 
 # ------------------------------------------------------------------
 # PERFORM THE RSYNC
 
 echo "Starting rsync------------------"
 
-rsync -av --progress --inplace --size-only --exclude='.*' $RSYNC_EXTRA_FLAGS "$SRC/" "$DEST/"
+RSYNC_EXIT=0
 
-RSYNC_EXIT=$?
+if [[ $QUICK_MODE -eq 1 ]]; then
+    LOOKBACK_DAYS=$(read_lookback_days)
+    SINCE=$(date -v-"${LOOKBACK_DAYS}"d '+%Y-%m-%d %H:%M:%S')
+    echo "Lookback window: $LOOKBACK_DAYS day(s) (from $CONFIG_FILE)"
+
+    CHANGED_COUNT=0
+
+    for dir in "$SRC"/*/; do
+        [[ -d "$dir" ]] || continue   # no subfolders: glob left unexpanded
+        dir="${dir%/}"
+        name="$(basename "$dir")"
+        [[ "$name" == .* ]] && continue   # skip hidden folders, same as --exclude='.*'
+
+        if find "$dir" -type f -not -path '*/.*' -newermt "$SINCE" -print -quit | grep -q .; then
+            CHANGED_COUNT=$((CHANGED_COUNT + 1))
+            echo "  -> changed: $name"
+            rsync -av --progress --inplace --size-only --exclude='.*' "$dir/" "$DEST/$name/"
+            code=$?
+            [[ $code -ne 0 && $code -ne 23 ]] && RSYNC_EXIT=$code
+            [[ $code -eq 23 && $RSYNC_EXIT -eq 0 ]] && RSYNC_EXIT=23
+        fi
+    done
+
+    if [[ $CHANGED_COUNT -eq 0 ]]; then
+        echo "Nothing changed in the last $LOOKBACK_DAYS day(s). Nothing to push."
+    fi
+else
+    rsync -av --progress --inplace --size-only --exclude='.*' $RSYNC_EXTRA_FLAGS "$SRC/" "$DEST/"
+    RSYNC_EXIT=$?
+fi
 
 
 if [[ $RSYNC_EXIT -eq 23 ]]; then
