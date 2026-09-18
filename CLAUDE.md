@@ -15,6 +15,11 @@ volume:
 - `olat-idle-eject-check.sh` — invoked periodically by a self-installed
   LaunchAgent to auto-disconnect an idle WebDAV connection (see below). Not
   meant to be run manually, though it's harmless to do so.
+- `olat-finder-helper.swift` — source for a minimal helper app, compiled
+  automatically (see `ensure_finder_helper` below) so the Finder-automation
+  calls have their own specific macOS Automation permission entry instead
+  of a generic one shared by every bash script on the machine. Not meant to
+  be run directly (it's not even executable as a script — it's compiled).
 - `config.yml` — the only tunable settings (quick-push lookback window,
   idle-disconnect timing).
 
@@ -189,16 +194,12 @@ one-shot-script project, so it's worth understanding as its own unit:
   ejection from happening while a Finder window is actually open on it, but
   it doesn't reset the countdown — once you close that window, the stale
   countdown is still ticking.
-- The LaunchAgent's `osascript`/Finder calls (`eject_webdav`,
-  `finder_window_open_on_webdav`) run from a background process launched by
-  `launchd`, not an interactive Terminal session. Confirmed by real-world
-  testing: this does inherit the same macOS Automation permission (System
-  Settings → Privacy & Security → Automation) that Terminal already has
-  for the existing mount step — a real automatic eject from the LaunchAgent
-  succeeded without a separate permission grant. If you ever see repeated
-  `-1743 Not authorized to send Apple events to Finder` in the log despite
-  this, something has revoked/reset that grant; check that log file first
-  if idle-disconnect doesn't seem to be firing.
+- `eject_webdav` and `finder_window_open_on_webdav` call out to
+  `OLATFinderHelper.app` (see "Finder helper app" below) rather than
+  calling `osascript` directly — see that section for why. If you ever see
+  repeated `-1743 Not authorized to send Apple events to Finder` in the
+  log, check **System Settings → Privacy & Security → Automation** for the
+  **OLATFinderHelper** entry specifically (not Terminal or bash).
 - **AppleScript gotcha to avoid re-introducing**: `finder_window_open_on_
   webdav`'s first version iterated with `repeat with w in windows` and then
   read `target of w`. That pattern binds `w` as an unresolved reference
@@ -212,3 +213,45 @@ one-shot-script project, so it's worth understanding as its own unit:
   reproduced from a permission-less shell (it never gets far enough to hit
   this bug) or without a real Finder window to iterate. If you touch this
   AppleScript again, keep the by-index form.
+
+## Finder helper app (`OLATFinderHelper.app`)
+
+macOS's Automation permission (System Settings → Privacy & Security →
+Automation) is granted per requesting *executable/bundle*, not per script.
+Originally `eject_webdav` and `finder_window_open_on_webdav` called
+`osascript` directly, so the resulting permission entry was the generic
+`/bin/bash` binary — shared by every bash script on the machine, not
+specific to this project. `olat-finder-helper.swift` + `ensure_finder_helper`
+(both in `olat-common.sh`) exist to give this project its own specific
+entry instead:
+
+- `ensure_finder_helper` compiles `olat-finder-helper.swift` with `swiftc`
+  into `$STATE_DIR/OLATFinderHelper.app` (a hand-built minimal bundle: just
+  `Contents/Info.plist` + `Contents/MacOS/OLATFinderHelper`, ad-hoc signed
+  with `codesign --sign -`), and is a no-op unless the compiled binary is
+  missing or older than the source. Called from `olatTransfer.sh` right
+  alongside `touch_last_used`/`ensure_idle_agent`, so it self-installs the
+  same way. If `swiftc` isn't available (Xcode Command Line Tools not
+  installed), it logs a warning and leaves the transfer itself unaffected —
+  only the idle-eject Finder checks degrade (fail open/no-op).
+- The Swift source is plain `Foundation`, not `AppKit` — deliberately. A
+  compiled AppleScript "applet" bundle (via `osacompile`) was tried first
+  and **rejected**: run directly as `Contents/MacOS/applet <args>` instead
+  of via `open -a ... --args`, it never exits (confirmed hanging
+  indefinitely in real testing, unrelated to Finder permissions — even a
+  command that never touches Finder hung) and argv arrives broken
+  (`Can't make item 1 into type Unicode text`). `NSAppleScript` executed
+  in-process from a plain Swift binary avoids both problems: it behaves
+  like an ordinary CLI tool (parse argv, run, print, exit), no app
+  lifecycle involved.
+- Interface: `OLATFinderHelper <eject|check-window> <arg>` — `eject`
+  ejects the named server (`eject_webdav` passes `$SERVER`), `check-window`
+  prints the count of open Finder windows whose target path starts with
+  the given prefix (`finder_window_open_on_webdav` passes
+  `$WEBDAV_PREFIX`). Both build the actual AppleScript source string in
+  Swift and run it via `NSAppleScript.executeAndReturnError`.
+- Deliberately scoped to only these two background/LaunchAgent-invoked
+  calls. `olatTransfer.sh`'s own interactive `mount volume` AppleScript
+  call still uses `osascript` directly under Terminal's existing
+  Automation grant — that one wasn't the thing flagged as too broad, and
+  narrowing it further wasn't asked for.

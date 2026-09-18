@@ -66,14 +66,25 @@ while:
   in `~/Library/LaunchAgents/`), independent of whether any Terminal window
   is open. Activity is logged to `~/Library/Logs/OLATTransfer/idle-eject.log`
   (capped at 5 MB).
-- The very first automatic eject attempt may need you to grant Automation
-  permission for controlling Finder (macOS may prompt once, the same as the
-  mount step already does — see "Preparation" below). If disconnects don't
-  seem to be happening, check that log file and
-  **System Settings → Privacy & Security → Automation**.
+- The eject and Finder-window checks run through a small helper app,
+  **OLATFinderHelper**, compiled automatically the first time you run
+  `olatTransfer.sh` (from `olat-finder-helper.swift`, into
+  `~/Library/Application Support/OLATTransfer/OLATFinderHelper.app`). This
+  exists so macOS's Automation permission shows up as its own specific
+  entry — **OLATFinderHelper** in
+  **System Settings → Privacy & Security → Automation** — rather than as
+  generic **bash**, which would otherwise cover every bash script on your
+  Mac that happens to call `osascript`. The very first automatic eject
+  attempt will need you to approve that permission once. If disconnects
+  don't seem to be happening, check
+  `~/Library/Logs/OLATTransfer/idle-eject.log` and that Automation entry.
 
 ## Requirements
 - Check if your macOS `rsync` supports the argument `--inplace`. This can be done by executing the following in the Terminal: `rsync --help | grep inplace`. It should show a line with `--inplace`.
+- The Xcode Command Line Tools (for `swiftc`), to build OLATFinderHelper.app.
+  Run `xcode-select --install` if `which swiftc` comes up empty. Without
+  this, transfers still work — only the idle-eject Finder checks are
+  affected (they log a warning and skip themselves).
 
 ## Preparation
 - [Enable WebDAV access to OLAT.](https://docs.olat.uzh.ch/en/manual_how-to/webdav/webdav/)

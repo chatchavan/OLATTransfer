@@ -32,6 +32,37 @@ logic.
 
 ## 2. Idle auto-disconnect
 
+### 2.0 Verify OLATFinderHelper builds and grant its permission
+
+`eject_webdav`/`finder_window_open_on_webdav` go through a compiled helper
+app (`OLATFinderHelper.app`) instead of calling `osascript` directly, so
+that macOS's Automation permission is specific to this project instead of
+generic `bash` (see `CLAUDE.md`, "Finder helper app"). Check it built and
+exercise its permission prompt once, before relying on the rest of this
+section:
+
+```bash
+ls -la "$HOME/Library/Application Support/OLATTransfer/OLATFinderHelper.app/Contents/MacOS/OLATFinderHelper"
+```
+
+If missing, run step 2.1 below once first (it self-builds on any
+`olatTransfer.sh` run), or check the log for a `swiftc not found` /
+`Failed to compile` line — that means the Xcode Command Line Tools aren't
+installed (`xcode-select --install`).
+
+```bash
+"$HOME/Library/Application Support/OLATTransfer/OLATFinderHelper.app/Contents/MacOS/OLATFinderHelper" check-window "/Volumes/lms.uzh.ch"
+```
+
+The first time this actually runs (here or via the LaunchAgent), macOS
+should prompt for Automation permission to control Finder — approve it.
+Afterwards it should print a plain number (count of matching open Finder
+windows) instead of a `-1743 Not authorized` error. Check
+**System Settings → Privacy & Security → Automation** for an
+**OLATFinderHelper** entry — that's the point of this component; if you
+instead see a generic **bash** entry being used, something's calling
+`osascript` directly again instead of going through the helper.
+
 ### 2.1 Trigger self-install
 
 Run against a source that doesn't exist, so nothing actually transfers —
@@ -104,37 +135,26 @@ disconnect happens ~1 minute after the *second* run, not the first.
    disconnect normally on the next check.
 
 **If this ever regresses** (the volume gets disconnected/the window closes
-despite being open), the fastest way to debug is running the check's
-AppleScript directly with logging, while the window is open:
+despite being open), the fastest way to debug is calling the compiled
+helper directly, while the window is open:
 
 ```bash
-osascript <<'APPLESCRIPT'
-tell application "Finder"
-    set n to 0
-    set winCount to count of windows
-    repeat with i from 1 to winCount
-        try
-            set p to POSIX path of ((target of window i) as alias)
-            log p
-            if p starts with "/Volumes/lms.uzh.ch" then set n to n + 1
-        on error errMsg
-            log "ERROR: " & errMsg
-        end try
-    end repeat
-    return n
-end tell
-APPLESCRIPT
+"$HOME/Library/Application Support/OLATTransfer/OLATFinderHelper.app/Contents/MacOS/OLATFinderHelper" check-window "/Volumes/lms.uzh.ch"
 ```
 
-This should print the resolved POSIX path of each open Finder window (or a
-caught error for windows that don't resolve, which is normal) and end with
-a count ≥ 1 if a window is open on the volume. A past bug here: iterating
-with `repeat with w in windows` instead of by index made every window
-throw `Can't make «class fvtg» ... into type alias`, silently swallowed by
-the `try`, so the check always reported "no window open." If you see that
-error pattern again, check `finder_window_open_on_webdav` in
-`olat-common.sh` is still iterating by index (`target of window i`), not
-`repeat with w in windows`.
+This should print a plain number ≥ 1 if a window is open on the volume (or
+an `ERROR: {NSAppleScriptErrorNumber = "-1743"; ...}` if the
+**OLATFinderHelper** Automation permission hasn't been granted yet — see
+2.0). A past bug in the underlying AppleScript (before it moved into
+`olat-finder-helper.swift`): iterating with `repeat with w in windows`
+instead of by index made every window throw `Can't make «class fvtg» ...
+into type alias`, silently swallowed by a `try`, so the check always
+reported "no window open" without ever surfacing an error. If you need to
+inspect that more directly, add `log p` / `on error errMsg` lines inside
+the AppleScript source string built in `olat-finder-helper.swift`'s
+`check-window` case, rebuild (`rm` the compiled app so
+`ensure_finder_helper` recompiles it, or just re-run `swiftc` on it
+directly), and re-run the command above.
 
 ### 2.6 TTL self-uninstall
 

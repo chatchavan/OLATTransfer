@@ -16,6 +16,10 @@ LOG_MAX_BYTES=$((5 * 1024 * 1024))
 AGENT_LABEL="com.local.olattransfer.idle-eject"
 AGENT_PLIST="$HOME/Library/LaunchAgents/$AGENT_LABEL.plist"
 
+HELPER_SOURCE="$SCRIPT_DIR/olat-finder-helper.swift"
+HELPER_APP="$STATE_DIR/OLATFinderHelper.app"
+HELPER_APP_EXE="$HELPER_APP/Contents/MacOS/OLATFinderHelper"
+
 mkdir -p "$STATE_DIR" "$LOG_DIR"
 
 # read_config_value <key> <default> - reads a "key: <integer>" line from
@@ -35,31 +39,76 @@ touch_last_used() {
     touch "$STAMP_FILE"
 }
 
+# ensure_finder_helper - (re)compiles OLATFinderHelper.app from
+# olat-finder-helper.swift into a minimal .app bundle in STATE_DIR, so
+# macOS's Automation permission for controlling Finder is granted to this
+# specific tool rather than to the generic /bin/bash binary (which would
+# otherwise cover every bash script on the machine). A no-op unless the
+# compiled binary is missing or older than the source. Requires the Xcode
+# Command Line Tools (swiftc); if that's unavailable, eject_webdav and
+# finder_window_open_on_webdav degrade gracefully (see below), they don't
+# block a transfer from completing.
+ensure_finder_helper() {
+    if [[ -x "$HELPER_APP_EXE" && "$HELPER_SOURCE" -ot "$HELPER_APP_EXE" ]]; then
+        return
+    fi
+    if ! command -v swiftc >/dev/null 2>&1; then
+        log_line "swiftc not found; can't build OLATFinderHelper.app. Install the Xcode Command Line Tools (xcode-select --install) for the idle-eject Finder checks to work."
+        return
+    fi
+
+    mkdir -p "$HELPER_APP/Contents/MacOS"
+    local build_output
+    build_output=$(swiftc "$HELPER_SOURCE" -o "$HELPER_APP_EXE" 2>&1)
+    if [[ ! -x "$HELPER_APP_EXE" ]]; then
+        log_line "Failed to compile OLATFinderHelper.app: $build_output"
+        return
+    fi
+
+    cat > "$HELPER_APP/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>OLATFinderHelper</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.local.olattransfer.finderhelper</string>
+    <key>CFBundleName</key>
+    <string>OLATFinderHelper</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSUIElement</key>
+    <true/>
+</dict>
+</plist>
+PLIST
+
+    codesign --sign - --force "$HELPER_APP" >/dev/null 2>&1
+    log_line "Compiled OLATFinderHelper.app (fresh build or source changed)."
+}
+
 eject_webdav() {
-    osascript -e "tell application \"Finder\" to eject \"$SERVER\"" 2>&1
+    if [[ ! -x "$HELPER_APP_EXE" ]]; then
+        echo "ERROR: OLATFinderHelper.app not built (see log)"
+        return 1
+    fi
+    "$HELPER_APP_EXE" eject "$SERVER" 2>&1
 }
 
 # finder_window_open_on_webdav - true if any open Finder window is currently
 # browsing the WebDAV volume. Used to defer auto-eject while you're actively
 # looking at it, rather than yanking it out from under you. Fails open (i.e.
-# returns false / "no window open") if osascript can't tell - same
-# Automation permission as eject_webdav, no new grant needed.
+# returns false / "no window open") if the helper can't tell, e.g. it isn't
+# built yet or lacks Automation permission.
 finder_window_open_on_webdav() {
+    [[ -x "$HELPER_APP_EXE" ]] || return 1
     local count
-    count=$(osascript <<APPLESCRIPT 2>/dev/null
-tell application "Finder"
-    set n to 0
-    set winCount to count of windows
-    repeat with i from 1 to winCount
-        try
-            set p to POSIX path of ((target of window i) as alias)
-            if p starts with "$WEBDAV_PREFIX" then set n to n + 1
-        end try
-    end repeat
-    return n
-end tell
-APPLESCRIPT
-)
+    count=$("$HELPER_APP_EXE" check-window "$WEBDAV_PREFIX" 2>/dev/null)
     [[ -n $count && $count -gt 0 ]]
 }
 

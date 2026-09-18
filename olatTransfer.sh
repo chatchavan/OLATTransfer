@@ -104,6 +104,7 @@ fi
 echo "Successfully mounting the WebDAV."
 
 touch_last_used
+ensure_finder_helper
 ensure_idle_agent
 
 # ------------------------------------------------------------------
