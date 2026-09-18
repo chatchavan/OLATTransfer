@@ -49,9 +49,10 @@ finder_window_open_on_webdav() {
     count=$(osascript <<APPLESCRIPT 2>/dev/null
 tell application "Finder"
     set n to 0
-    repeat with w in windows
+    set winCount to count of windows
+    repeat with i from 1 to winCount
         try
-            set p to POSIX path of (target of w as alias)
+            set p to POSIX path of ((target of window i) as alias)
             if p starts with "$WEBDAV_PREFIX" then set n to n + 1
         end try
     end repeat

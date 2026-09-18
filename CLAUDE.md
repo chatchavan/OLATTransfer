@@ -175,10 +175,24 @@ one-shot-script project, so it's worth understanding as its own unit:
   countdown is still ticking.
 - The LaunchAgent's `osascript`/Finder calls (`eject_webdav`,
   `finder_window_open_on_webdav`) run from a background process launched by
-  `launchd`, not an interactive Terminal session. It's unverified whether
-  this inherits the same macOS Automation permission (System Settings →
-  Privacy & Security → Automation) that Terminal already has for the
-  existing mount step — if not, both calls silently fail-open/no-op
-  (logged as a normal "likely busy" retry) until that permission is granted
-  separately. Check the log file if idle-disconnect doesn't seem to be
-  firing.
+  `launchd`, not an interactive Terminal session. Confirmed by real-world
+  testing: this does inherit the same macOS Automation permission (System
+  Settings → Privacy & Security → Automation) that Terminal already has
+  for the existing mount step — a real automatic eject from the LaunchAgent
+  succeeded without a separate permission grant. If you ever see repeated
+  `-1743 Not authorized to send Apple events to Finder` in the log despite
+  this, something has revoked/reset that grant; check that log file first
+  if idle-disconnect doesn't seem to be firing.
+- **AppleScript gotcha to avoid re-introducing**: `finder_window_open_on_
+  webdav`'s first version iterated with `repeat with w in windows` and then
+  read `target of w`. That pattern binds `w` as an unresolved reference
+  chain (`item i of every window of application "Finder"`), and asking
+  Finder for `target of` that reference throws `Can't make «class fvtg» ...
+  into type alias` for every window — a silent false negative here, since
+  it's wrapped in `try`. The fix is to iterate by index and reference the
+  window directly (`target of window i`), which resolves properly. Found by
+  manually re-running the check with `log p` / `on error errMsg` added
+  while a real Finder window was open on the volume, since this can't be
+  reproduced from a permission-less shell (it never gets far enough to hit
+  this bug) or without a real Finder window to iterate. If you touch this
+  AppleScript again, keep the by-index form.
