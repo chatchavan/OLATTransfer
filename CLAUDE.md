@@ -151,17 +151,34 @@ one-shot-script project, so it's worth understanding as its own unit:
      it automatically on your next transfer.
   2. **Idle-disconnect check** — otherwise, if the volume is mounted and
      idle time ≥ `idle_disconnect_minutes` (default 10), it attempts to
-     eject. A failed eject (e.g. Finder still has the volume open) is
-     logged and left for the next poll to retry — it never force-ejects.
+     eject.
+  Both checks call `finder_window_open_on_webdav` (in `olat-common.sh`)
+  first and skip the eject/uninstall for that cycle (deferring to the next
+  poll) if a Finder window is currently browsing the volume — see "Known
+  limitation" below for why this check exists. If the eject itself still
+  fails for some other reason, that's likewise logged and left for the next
+  poll to retry — it never force-ejects.
 - **Logging**: `log_line` (in `olat-common.sh`) appends timestamped entries
   to `~/Library/Logs/OLATTransfer/idle-eject.log`, truncating the file to
   roughly `LOG_MAX_BYTES / 2` (currently ~2.5 MB) whenever it exceeds
   `LOG_MAX_BYTES` (5 MB), keeping only the most recent content.
-- **Known open question**: the LaunchAgent's `osascript`/Finder eject call
-  runs from a background process launched by `launchd`, not from an
-  interactive Terminal session. It's unverified whether this inherits the
-  same macOS Automation permission (System Settings → Privacy & Security →
-  Automation) that Terminal already has for the existing mount step — if
-  not, every automatic eject may silently fail (logged as a normal
-  "likely busy" retry) until that permission is granted separately. Check
-  the log file if idle-disconnect doesn't seem to be firing.
+- **Known limitation, confirmed by manual testing**: "used" only means "ran
+  `olatTransfer.sh`" (`touch_last_used`) — it does not mean "the volume is
+  mounted" or "someone is browsing it." If the agent ejects the volume and
+  you then reopen it directly in Finder (e.g. clicking the sidebar
+  favorite) without running a transfer, Finder silently remounts it but the
+  stamp file is untouched, so the idle countdown is still counting from the
+  old stamp and can eject it again almost immediately. `finder_window_open_
+  on_webdav` (added after this was observed) prevents that specific
+  ejection from happening while a Finder window is actually open on it, but
+  it doesn't reset the countdown — once you close that window, the stale
+  countdown is still ticking.
+- The LaunchAgent's `osascript`/Finder calls (`eject_webdav`,
+  `finder_window_open_on_webdav`) run from a background process launched by
+  `launchd`, not an interactive Terminal session. It's unverified whether
+  this inherits the same macOS Automation permission (System Settings →
+  Privacy & Security → Automation) that Terminal already has for the
+  existing mount step — if not, both calls silently fail-open/no-op
+  (logged as a normal "likely busy" retry) until that permission is granted
+  separately. Check the log file if idle-disconnect doesn't seem to be
+  firing.

@@ -39,6 +39,29 @@ eject_webdav() {
     osascript -e "tell application \"Finder\" to eject \"$SERVER\"" 2>&1
 }
 
+# finder_window_open_on_webdav - true if any open Finder window is currently
+# browsing the WebDAV volume. Used to defer auto-eject while you're actively
+# looking at it, rather than yanking it out from under you. Fails open (i.e.
+# returns false / "no window open") if osascript can't tell - same
+# Automation permission as eject_webdav, no new grant needed.
+finder_window_open_on_webdav() {
+    local count
+    count=$(osascript <<APPLESCRIPT 2>/dev/null
+tell application "Finder"
+    set n to 0
+    repeat with w in windows
+        try
+            set p to POSIX path of (target of w as alias)
+            if p starts with "$WEBDAV_PREFIX" then set n to n + 1
+        end try
+    end repeat
+    return n
+end tell
+APPLESCRIPT
+)
+    [[ -n $count && $count -gt 0 ]]
+}
+
 # log_line <message> - appends a timestamped line to LOG_FILE, keeping it
 # under LOG_MAX_BYTES by dropping older content once it grows past the cap.
 log_line() {

@@ -18,6 +18,10 @@ TTL_HOURS=$(read_config_value idle_agent_ttl_hours 12)
 TTL_MINUTES=$((TTL_HOURS * 60))
 
 if (( IDLE_MINUTES >= TTL_MINUTES )); then
+    if [[ -d "$WEBDAV_PREFIX" ]] && finder_window_open_on_webdav; then
+        log_line "Idle ${IDLE_MINUTES} min (>= ${TTL_HOURS}h TTL) but a Finder window is open on the volume; deferring eject/uninstall."
+        exit 0
+    fi
     if [[ -d "$WEBDAV_PREFIX" ]]; then
         RESULT=$(eject_webdav)
         log_line "Idle ${IDLE_MINUTES} min (>= ${TTL_HOURS}h TTL): ejected WebDAV before self-uninstall. ($RESULT)"
@@ -35,10 +39,14 @@ fi
 DISCONNECT_MINUTES=$(read_config_value idle_disconnect_minutes 10)
 
 if (( IDLE_MINUTES >= DISCONNECT_MINUTES )); then
-    RESULT=$(eject_webdav)
-    if [[ -d "$WEBDAV_PREFIX" ]]; then
-        log_line "Idle ${IDLE_MINUTES} min (>= ${DISCONNECT_MINUTES} min): eject attempt failed, volume likely busy. Will retry next poll. ($RESULT)"
+    if finder_window_open_on_webdav; then
+        log_line "Idle ${IDLE_MINUTES} min (>= ${DISCONNECT_MINUTES} min) but a Finder window is open on the volume; skipping eject, will retry next poll."
     else
-        log_line "Idle ${IDLE_MINUTES} min (>= ${DISCONNECT_MINUTES} min): disconnected WebDAV."
+        RESULT=$(eject_webdav)
+        if [[ -d "$WEBDAV_PREFIX" ]]; then
+            log_line "Idle ${IDLE_MINUTES} min (>= ${DISCONNECT_MINUTES} min): eject attempt failed, volume likely busy. Will retry next poll. ($RESULT)"
+        else
+            log_line "Idle ${IDLE_MINUTES} min (>= ${DISCONNECT_MINUTES} min): disconnected WebDAV."
+        fi
     fi
 fi

@@ -51,9 +51,13 @@ while:
   Any transfer — upload, download, or quick push — restarts this countdown.
 - It checks every `idle_poll_minutes` (default 5). Change either value in
   `config.yml`; it takes effect the next time you run a transfer.
-- If the volume can't be ejected (e.g. a Finder window still has it open),
-  it just logs that and quietly retries on the next check — it never force-
-  ejects.
+- Before ejecting, it checks whether any Finder window is currently open on
+  the volume, and skips the eject (retrying on the next check) if so — it
+  never disconnects out from under you while you're browsing it in Finder.
+  This only recognizes Finder; another app with a file open from the volume
+  isn't detected. If the eject itself still fails for some other reason
+  (e.g. a file genuinely locked/in use), it likewise just logs that and
+  quietly retries later — it never force-ejects.
 - If `olatTransfer.sh` hasn't run at all for `idle_agent_ttl_hours` (default
   12), the helper disconnects the volume one last time and removes itself,
   rather than polling forever. It reinstalls automatically next time you
