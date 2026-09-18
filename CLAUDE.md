@@ -144,8 +144,17 @@ one-shot-script project, so it's worth understanding as its own unit:
 - **`olat-idle-eject-check.sh`** (the LaunchAgent's payload) does two
   checks against the shared stamp file, in order:
   1. **TTL check** — if idle time since the stamp ≥ `idle_agent_ttl_hours`
-     (default 12h), it ejects the volume if still mounted, then
-     `launchctl bootout`s itself and deletes its own plist. This is a
+     (default 12h), it ejects the volume if still mounted, deletes its own
+     plist and logs that, and *then* runs `launchctl bootout` on itself.
+     This order is deliberate and load-bearing: this script is itself the
+     running invocation of that LaunchAgent job, and bootout-ing the job
+     that is currently executing appears to terminate the process
+     immediately — confirmed by testing, where `rm -f "$AGENT_PLIST"` and
+     the following `log_line` silently never ran when `bootout` came
+     first, even though the eject before it had already succeeded and
+     logged. `bootout` only needs the job's label, not the plist file on
+     disk, so doing the file cleanup and logging first and bootout last is
+     safe either way — keep it in that order if you touch this. This is a
      deliberate "give up and clean up" path so the poller doesn't run
      forever once you stop using the tool; `ensure_idle_agent` reinstalls
      it automatically on your next transfer.

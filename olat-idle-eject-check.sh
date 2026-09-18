@@ -26,9 +26,14 @@ if (( IDLE_MINUTES >= TTL_MINUTES )); then
         RESULT=$(eject_webdav)
         log_line "Idle ${IDLE_MINUTES} min (>= ${TTL_HOURS}h TTL): ejected WebDAV before self-uninstall. ($RESULT)"
     fi
-    launchctl bootout "gui/$(id -u)/$AGENT_LABEL" >/dev/null 2>&1
+    # Delete the plist and log BEFORE bootout: this script is itself the
+    # LaunchAgent's own running invocation, and bootout-ing the job that is
+    # currently executing appears to terminate this process immediately -
+    # anything after it here doesn't reliably run. bootout only needs the
+    # job's label, not the plist file on disk, so this order is safe.
     rm -f "$AGENT_PLIST"
     log_line "No olatTransfer.sh activity in ${TTL_HOURS}h; idle-eject agent uninstalled itself. It will reinstall on next use."
+    launchctl bootout "gui/$(id -u)/$AGENT_LABEL" >/dev/null 2>&1
     exit 0
 fi
 
