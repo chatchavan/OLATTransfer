@@ -227,13 +227,36 @@ entry instead:
 
 - `ensure_finder_helper` compiles `olat-finder-helper.swift` with `swiftc`
   into `$STATE_DIR/OLATFinderHelper.app` (a hand-built minimal bundle: just
-  `Contents/Info.plist` + `Contents/MacOS/OLATFinderHelper`, ad-hoc signed
-  with `codesign --sign -`), and is a no-op unless the compiled binary is
-  missing or older than the source. Called from `olatTransfer.sh` right
-  alongside `touch_last_used`/`ensure_idle_agent`, so it self-installs the
-  same way. If `swiftc` isn't available (Xcode Command Line Tools not
-  installed), it logs a warning and leaves the transfer itself unaffected —
-  only the idle-eject Finder checks degrade (fail open/no-op).
+  `Contents/Info.plist` + `Contents/MacOS/OLATFinderHelper`). The compile
+  step is a no-op unless the binary is missing or older than the source.
+  Called from `olatTransfer.sh` right alongside
+  `touch_last_used`/`ensure_idle_agent`, so it self-installs the same way.
+  If `swiftc` isn't available (Xcode Command Line Tools not installed), it
+  logs a warning and leaves the transfer itself unaffected — only the
+  idle-eject Finder checks degrade (fail open/no-op).
+- **Ad-hoc signing turned out not to be enough** — confirmed by testing,
+  this is the important gotcha in this whole section. An ad-hoc signature
+  (`codesign --sign -`, no Team ID, hash changes every rebuild) doesn't get
+  its own tracked Automation entry at all: querying
+  `~/Library/Application Support/com.apple.TCC/TCC.db` directly showed
+  **no row** for `com.local.olattransfer.finderhelper` after a real,
+  successful automatic eject — the call had silently ridden on Terminal's
+  pre-existing `com.apple.Terminal -> com.apple.finder` grant instead of
+  creating a distinct one. So `ensure_signing_identity` (in
+  `olat-common.sh`) generates a local self-signed code-signing certificate
+  (`$CODESIGN_IDENTITY_CN`, "OLATFinderHelper Local Signing") via `openssl`
+  and imports it into the login keychain — this part is safe and
+  non-interactive. `ensure_finder_helper` then tries `codesign --sign
+  "$CODESIGN_IDENTITY_CN"` on *every* call (not just on rebuild, since
+  signing is cheap and this lets a later trust-completion take effect
+  immediately), falling back to ad-hoc if that identity isn't trusted yet.
+  **Setting that certificate's trust for code signing cannot be scripted**:
+  `security add-trusted-cert` hangs waiting for an interactive approval
+  dialog that can't be answered non-interactively (confirmed by testing —
+  it just hangs, doesn't error). It's a one-time manual step for the human
+  running this: Keychain Access → login keychain → My Certificates → find
+  the cert → Trust → Code Signing → Always Trust (see README). Until that's
+  done, the helper keeps working correctly, just ad-hoc-signed.
 - The Swift source is plain `Foundation`, not `AppKit` — deliberately. A
   compiled AppleScript "applet" bundle (via `osacompile`) was tried first
   and **rejected**: run directly as `Contents/MacOS/applet <args>` instead

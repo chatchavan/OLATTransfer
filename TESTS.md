@@ -32,14 +32,16 @@ logic.
 
 ## 2. Idle auto-disconnect
 
-### 2.0 Verify OLATFinderHelper builds and grant its permission
+### 2.0 Verify OLATFinderHelper builds, is properly signed, and gets its own permission
 
 `eject_webdav`/`finder_window_open_on_webdav` go through a compiled helper
 app (`OLATFinderHelper.app`) instead of calling `osascript` directly, so
 that macOS's Automation permission is specific to this project instead of
-generic `bash` (see `CLAUDE.md`, "Finder helper app"). Check it built and
-exercise its permission prompt once, before relying on the rest of this
-section:
+generic `bash` (see `CLAUDE.md`, "Finder helper app"). Getting that
+specific entry needs two things: the app must be signed with a **real**
+(even self-signed) certificate — **not ad-hoc**, which silently doesn't
+get its own tracked entry at all — and that certificate must be **trusted
+for code signing**, which can't be scripted and needs one manual step.
 
 ```bash
 ls -la "$HOME/Library/Application Support/OLATTransfer/OLATFinderHelper.app/Contents/MacOS/OLATFinderHelper"
@@ -51,17 +53,42 @@ If missing, run step 2.1 below once first (it self-builds on any
 installed (`xcode-select --install`).
 
 ```bash
+codesign -dv "$HOME/Library/Application Support/OLATTransfer/OLATFinderHelper.app" 2>&1 | grep Signature
+```
+
+If this says `Signature=adhoc`, the one-time trust step hasn't been done
+yet (or `openssl` isn't available — check the log for
+`can't generate a local code-signing identity`). Do it now:
+
+1. Open **Keychain Access** → **login** keychain → **My Certificates**.
+2. Find **OLATFinderHelper Local Signing** (generated automatically by
+   `ensure_signing_identity` the first time `olatTransfer.sh` ran).
+3. Double-click it → expand **Trust** → set **Code Signing** to
+   **Always Trust** → close the panel → enter your password when prompted.
+4. Run step 2.1 below again — `ensure_finder_helper` re-signs the already-
+   built app with the now-trusted identity on every run, no rebuild needed.
+   Re-check the `codesign -dv` command above: it should now say something
+   other than `adhoc` (a real signer name), and the log should have a line
+   ending in `signed with local identity 'OLATFinderHelper Local Signing'`.
+
+**Do not expect `security add-trusted-cert` to do step 3 for you** — it
+hangs waiting for the same interactive dialog when run from a script or
+agent shell; it only works run directly by a human in Terminal, and even
+then it's the GUI dialog (not the command completing) that grants trust.
+
+Once properly signed:
+
+```bash
 "$HOME/Library/Application Support/OLATTransfer/OLATFinderHelper.app/Contents/MacOS/OLATFinderHelper" check-window "/Volumes/lms.uzh.ch"
 ```
 
-The first time this actually runs (here or via the LaunchAgent), macOS
-should prompt for Automation permission to control Finder — approve it.
-Afterwards it should print a plain number (count of matching open Finder
-windows) instead of a `-1743 Not authorized` error. Check
+The first real Finder-touching call after this should prompt for
+Automation permission — approve it. Check
 **System Settings → Privacy & Security → Automation** for an
-**OLATFinderHelper** entry — that's the point of this component; if you
-instead see a generic **bash** entry being used, something's calling
-`osascript` directly again instead of going through the helper.
+**OLATFinderHelper** entry. If you instead only ever see it working under
+a generic **bash** or **Terminal** entry with no **OLATFinderHelper** line
+appearing, the signature likely reverted to ad-hoc (check `codesign -dv`
+again) or the cert's trust got reset.
 
 ### 2.1 Trigger self-install
 

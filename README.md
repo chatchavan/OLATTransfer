@@ -74,10 +74,31 @@ while:
   entry — **OLATFinderHelper** in
   **System Settings → Privacy & Security → Automation** — rather than as
   generic **bash**, which would otherwise cover every bash script on your
-  Mac that happens to call `osascript`. The very first automatic eject
-  attempt will need you to approve that permission once. If disconnects
-  don't seem to be happening, check
-  `~/Library/Logs/OLATTransfer/idle-eject.log` and that Automation entry.
+  Mac that happens to call `osascript`.
+- **One-time manual step** to make that specific entry actually work:
+  macOS only tracks a distinct Automation permission for code signed with
+  a real (even self-signed) certificate — an ad-hoc-signed app doesn't
+  get its own entry at all; it silently rides on whatever already-granted
+  app invoked it (e.g. Terminal), which defeats the point. `olatTransfer.sh`
+  auto-generates a local self-signed code-signing certificate ("OLATFinder-
+  Helper Local Signing") the first time it runs, but **can't** set its
+  trust settings itself — that needs an interactive approval macOS won't
+  let a script grant on your behalf. To finish this once:
+  1. Open **Keychain Access** → **login** keychain → **My Certificates**.
+  2. Find **OLATFinderHelper Local Signing**, double-click it, expand
+     **Trust**, set **Code Signing** to **Always Trust**, close the panel,
+     and enter your password when prompted.
+  3. Run `olatTransfer.sh` again — it re-signs `OLATFinderHelper.app` with
+     that now-trusted certificate automatically. Check
+     `~/Library/Logs/OLATTransfer/idle-eject.log` for a line ending in
+     `signed with local identity 'OLATFinderHelper Local Signing'`, and
+     check **System Settings → Privacy & Security → Automation** for the
+     **OLATFinderHelper** entry once it actually triggers Finder.
+
+  Until you do this, the helper still works (ad-hoc signed), it just
+  can't get its own separate Automation entry — the first automatic eject
+  attempt will show up under **bash** as before. If disconnects don't seem
+  to be happening at all, check that log file.
 
 ## Requirements
 - Check if your macOS `rsync` supports the argument `--inplace`. This can be done by executing the following in the Terminal: `rsync --help | grep inplace`. It should show a line with `--inplace`.
@@ -85,6 +106,9 @@ while:
   Run `xcode-select --install` if `which swiftc` comes up empty. Without
   this, transfers still work — only the idle-eject Finder checks are
   affected (they log a warning and skip themselves).
+- `openssl` (already on macOS, or from Homebrew) to generate the local
+  code-signing certificate above. Without it, the helper stays ad-hoc
+  signed permanently (logged as a warning) — transfers are unaffected.
 
 ## Preparation
 - [Enable WebDAV access to OLAT.](https://docs.olat.uzh.ch/en/manual_how-to/webdav/webdav/)

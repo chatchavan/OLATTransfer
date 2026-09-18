@@ -20,6 +20,8 @@ HELPER_SOURCE="$SCRIPT_DIR/olat-finder-helper.swift"
 HELPER_APP="$STATE_DIR/OLATFinderHelper.app"
 HELPER_APP_EXE="$HELPER_APP/Contents/MacOS/OLATFinderHelper"
 
+CODESIGN_IDENTITY_CN="OLATFinderHelper Local Signing"
+
 mkdir -p "$STATE_DIR" "$LOG_DIR"
 
 # read_config_value <key> <default> - reads a "key: <integer>" line from
@@ -39,33 +41,80 @@ touch_last_used() {
     touch "$STAMP_FILE"
 }
 
+# ensure_signing_identity - generates (once) a local self-signed
+# code-signing certificate and imports it into the login keychain, so
+# OLATFinderHelper.app can be signed with a stable, non-ad-hoc identity -
+# ad-hoc signatures have no Team ID and change on every rebuild, so macOS
+# doesn't track them as a distinct Automation permission entry at all; it
+# silently falls back to whatever already-granted ancestor process (e.g.
+# Terminal) invoked it. Generating/importing the cert is safe and
+# non-interactive. Trusting it for code signing is NOT done here: that
+# needs an interactive approval dialog that hangs a non-interactive script
+# (confirmed by testing) - it's a one-time manual step, see README/TESTS.md.
+ensure_signing_identity() {
+    if security find-certificate -c "$CODESIGN_IDENTITY_CN" >/dev/null 2>&1; then
+        return
+    fi
+    if ! command -v openssl >/dev/null 2>&1; then
+        log_line "openssl not found; can't generate a local code-signing identity. OLATFinderHelper.app will stay ad-hoc signed (generic Automation permission)."
+        return
+    fi
+
+    local tmp pass
+    tmp=$(mktemp -d)
+    pass=$(openssl rand -hex 16)
+
+    openssl req -x509 -newkey rsa:2048 -keyout "$tmp/key.pem" -out "$tmp/cert.pem" \
+        -days 3650 -nodes -subj "/CN=$CODESIGN_IDENTITY_CN" \
+        -addext "keyUsage=critical,digitalSignature" \
+        -addext "extendedKeyUsage=critical,codeSigning" \
+        -addext "basicConstraints=critical,CA:false" >/dev/null 2>&1
+
+    openssl pkcs12 -export -out "$tmp/cert.p12" -inkey "$tmp/key.pem" -in "$tmp/cert.pem" \
+        -passout "pass:$pass" -legacy >/dev/null 2>&1
+
+    if [[ ! -f "$tmp/cert.p12" ]]; then
+        log_line "Failed to generate local code-signing certificate."
+        rm -rf "$tmp"
+        return
+    fi
+
+    security import "$tmp/cert.p12" -k "$HOME/Library/Keychains/login.keychain-db" -P "$pass" -T /usr/bin/codesign >/dev/null 2>&1
+    rm -rf "$tmp"
+
+    log_line "Generated local code-signing certificate '$CODESIGN_IDENTITY_CN'. One-time manual step needed: open Keychain Access, find it under 'My Certificates' (login keychain), expand Trust, set 'Code Signing' to 'Always Trust', and enter your password when prompted. Until then, OLATFinderHelper.app stays ad-hoc signed."
+}
+
 # ensure_finder_helper - (re)compiles OLATFinderHelper.app from
 # olat-finder-helper.swift into a minimal .app bundle in STATE_DIR, so
 # macOS's Automation permission for controlling Finder is granted to this
 # specific tool rather than to the generic /bin/bash binary (which would
-# otherwise cover every bash script on the machine). A no-op unless the
-# compiled binary is missing or older than the source. Requires the Xcode
-# Command Line Tools (swiftc); if that's unavailable, eject_webdav and
-# finder_window_open_on_webdav degrade gracefully (see below), they don't
-# block a transfer from completing.
+# otherwise cover every bash script on the machine). Rebuild is a no-op
+# unless the compiled binary is missing or older than the source. Requires
+# the Xcode Command Line Tools (swiftc); if that's unavailable, eject_webdav
+# and finder_window_open_on_webdav degrade gracefully (see below), they
+# don't block a transfer from completing.
 ensure_finder_helper() {
-    if [[ -x "$HELPER_APP_EXE" && "$HELPER_SOURCE" -ot "$HELPER_APP_EXE" ]]; then
-        return
-    fi
-    if ! command -v swiftc >/dev/null 2>&1; then
-        log_line "swiftc not found; can't build OLATFinderHelper.app. Install the Xcode Command Line Tools (xcode-select --install) for the idle-eject Finder checks to work."
-        return
+    local needs_build=0
+    if [[ ! -x "$HELPER_APP_EXE" || "$HELPER_SOURCE" -nt "$HELPER_APP_EXE" ]]; then
+        needs_build=1
     fi
 
-    mkdir -p "$HELPER_APP/Contents/MacOS"
-    local build_output
-    build_output=$(swiftc "$HELPER_SOURCE" -o "$HELPER_APP_EXE" 2>&1)
-    if [[ ! -x "$HELPER_APP_EXE" ]]; then
-        log_line "Failed to compile OLATFinderHelper.app: $build_output"
-        return
-    fi
+    if [[ $needs_build -eq 1 ]]; then
+        if ! command -v swiftc >/dev/null 2>&1; then
+            log_line "swiftc not found; can't build OLATFinderHelper.app. Install the Xcode Command Line Tools (xcode-select --install) for the idle-eject Finder checks to work."
+            return
+        fi
 
-    cat > "$HELPER_APP/Contents/Info.plist" <<PLIST
+        mkdir -p "$HELPER_APP/Contents/MacOS"
+        local build_output
+        build_output=$(swiftc "$HELPER_SOURCE" -o "$HELPER_APP_EXE" 2>&1)
+        if [[ ! -x "$HELPER_APP_EXE" ]]; then
+            log_line "Failed to compile OLATFinderHelper.app: $build_output"
+            return
+        fi
+
+        cat > "$HELPER_APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -87,9 +136,24 @@ ensure_finder_helper() {
 </dict>
 </plist>
 PLIST
+    fi
 
-    codesign --sign - --force "$HELPER_APP" >/dev/null 2>&1
-    log_line "Compiled OLATFinderHelper.app (fresh build or source changed)."
+    # (Re-)signing runs on every call, not just on a rebuild: it's cheap,
+    # and it lets completing the one-time trust step (ensure_signing_identity)
+    # upgrade an already-built ad-hoc app to a properly-signed one right
+    # away, without waiting for the Swift source to change.
+    local was_adhoc=0
+    codesign -dv "$HELPER_APP" 2>&1 | grep -q "Signature=adhoc" && was_adhoc=1
+
+    ensure_signing_identity
+    if codesign --sign "$CODESIGN_IDENTITY_CN" --force "$HELPER_APP" >/dev/null 2>&1; then
+        if [[ $needs_build -eq 1 || $was_adhoc -eq 1 ]]; then
+            log_line "OLATFinderHelper.app signed with local identity '$CODESIGN_IDENTITY_CN'."
+        fi
+    else
+        codesign --sign - --force "$HELPER_APP" >/dev/null 2>&1
+        [[ $needs_build -eq 1 ]] && log_line "Compiled OLATFinderHelper.app (ad-hoc signed; '$CODESIGN_IDENTITY_CN' not yet trusted for code signing - see the log line above for the one-time setup step)."
+    fi
 }
 
 eject_webdav() {
