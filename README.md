@@ -36,6 +36,38 @@ within the last N days, and uploads just those folders.
   template to copy per course, alongside your existing full-upload
   `.command` file.
 
+## Idle auto-disconnect
+
+Leaving the WebDAV connection mounted (the default when you omit `-d`) is
+deliberate — it avoids reconnecting for every transfer, which is what keeps
+you under UZH's connection-rate limit (see "Pragmatic choices" below). But a
+connection left mounted forever is also not great, so `olatTransfer.sh`
+automatically installs a small background helper the first time it runs
+that disconnects the WebDAV volume on its own after it's been idle for a
+while:
+
+- After `idle_disconnect_minutes` (default 10, [`config.yml`](config.yml))
+  with no `olatTransfer.sh` activity, it ejects the volume if still mounted.
+  Any transfer — upload, download, or quick push — restarts this countdown.
+- It checks every `idle_poll_minutes` (default 5). Change either value in
+  `config.yml`; it takes effect the next time you run a transfer.
+- If the volume can't be ejected (e.g. a Finder window still has it open),
+  it just logs that and quietly retries on the next check — it never force-
+  ejects.
+- If `olatTransfer.sh` hasn't run at all for `idle_agent_ttl_hours` (default
+  12), the helper disconnects the volume one last time and removes itself,
+  rather than polling forever. It reinstalls automatically next time you
+  run a transfer.
+- This runs as a per-user background job (`com.local.olattransfer.idle-eject`
+  in `~/Library/LaunchAgents/`), independent of whether any Terminal window
+  is open. Activity is logged to `~/Library/Logs/OLATTransfer/idle-eject.log`
+  (capped at 5 MB).
+- The very first automatic eject attempt may need you to grant Automation
+  permission for controlling Finder (macOS may prompt once, the same as the
+  mount step already does — see "Preparation" below). If disconnects don't
+  seem to be happening, check that log file and
+  **System Settings → Privacy & Security → Automation**.
+
 ## Requirements
 - Check if your macOS `rsync` supports the argument `--inplace`. This can be done by executing the following in the Terminal: `rsync --help | grep inplace`. It should show a line with `--inplace`.
 

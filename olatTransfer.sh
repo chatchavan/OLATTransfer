@@ -1,12 +1,7 @@
 #!/usr/bin/env bash
 
-# WebDAV credentials
-SERVER="lms.uzh.ch"
-WEBDAV_PREFIX="/Volumes/$SERVER"
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_FILE="$SCRIPT_DIR/config.yml"
-DEFAULT_LOOKBACK_DAYS=14
+source "$SCRIPT_DIR/olat-common.sh"
 
 # ------------------------------------------------------------------
 # USAGE
@@ -51,22 +46,6 @@ fi
 
 SRC="$1"
 DEST="$2"
-
-# ------------------------------------------------------------------
-# READ QUICK-MODE CONFIG (config.yml, key: lookback_days)
-
-read_lookback_days() {
-    local value=""
-    if [[ -f "$CONFIG_FILE" ]]; then
-        value=$(grep -E '^[[:space:]]*lookback_days:' "$CONFIG_FILE" \
-                 | head -1 \
-                 | sed -E 's/^[[:space:]]*lookback_days:[[:space:]]*([0-9]+).*/\1/')
-    fi
-    if [[ -z $value ]]; then
-        value=$DEFAULT_LOOKBACK_DAYS
-    fi
-    echo "$value"
-}
 
 # ------------------------------------------------------------------
 # FETCH PASSWORD FROM THE KEYCHAIN
@@ -124,6 +103,9 @@ fi
 
 echo "Successfully mounting the WebDAV."
 
+touch_last_used
+ensure_idle_agent
+
 # ------------------------------------------------------------------
 # VALIDATE SOURCE AND DESTINATION
 
@@ -173,7 +155,7 @@ echo "Starting rsync------------------"
 RSYNC_EXIT=0
 
 if [[ $QUICK_MODE -eq 1 ]]; then
-    LOOKBACK_DAYS=$(read_lookback_days)
+    LOOKBACK_DAYS=$(read_config_value lookback_days 14)
     SINCE=$(date -v-"${LOOKBACK_DAYS}"d '+%Y-%m-%d %H:%M:%S')
     echo "Lookback window: $LOOKBACK_DAYS day(s) (from $CONFIG_FILE)"
 
@@ -217,7 +199,7 @@ fi
 # CLEAN UP
 
 if [[ $DO_EJECT -eq 1 ]]; then
-    osascript -e "tell application \"Finder\" to eject \"$SERVER\""
+    eject_webdav >/dev/null
     echo "Disconnected from WebDAV."
 else
     echo "WebDAV connection remains mounted."

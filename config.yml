@@ -4,3 +4,22 @@
 # deciding which top-level source folders to upload. Only whole numbers are
 # read; comments and blank lines are ignored.
 lookback_days: 14
+
+# Idle auto-disconnect: after this many minutes with no olatTransfer.sh
+# activity (any upload, download, or quick push), a background LaunchAgent
+# ejects the WebDAV volume if it's still mounted. Any olatTransfer.sh run
+# restarts this countdown.
+idle_disconnect_minutes: 10
+
+# How often (in minutes) the background LaunchAgent checks whether the
+# threshold above has been reached. Lower = more precise disconnect timing,
+# higher = fewer background wakeups. Takes effect the next time any
+# olatTransfer.sh command runs (it reinstalls the LaunchAgent with the new
+# interval).
+idle_poll_minutes: 5
+
+# If olatTransfer.sh hasn't been run at all for this many hours, the
+# background LaunchAgent ejects the WebDAV volume (if still mounted) and
+# removes itself instead of continuing to poll indefinitely. It reinstalls
+# itself automatically the next time you run a transfer.
+idle_agent_ttl_hours: 12
