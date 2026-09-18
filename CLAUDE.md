@@ -27,7 +27,14 @@ available; check `rsync --help` on the target machine first.
 
 ## Running / testing changes
 
-There are no automated tests. To verify a change, run the script directly
+There are no automated tests. `TESTS.md` is the step-by-step manual test
+plan (quick push folder selection, and the full idle auto-disconnect
+sequence including the Finder-window and TTL self-uninstall cases) — run
+through it after touching `olatTransfer.sh`, `olat-common.sh`, or
+`olat-idle-eject-check.sh`, and read it first if you hit an idle-eject bug,
+since it documents two past ones (an AppleScript window-iteration bug and a
+self-referential `launchctl bootout` ordering bug) and how to tell if
+they've resurfaced. To verify a change ad hoc, run the script directly
 against a real (or test) OLAT WebDAV path, e.g.:
 
 ```
