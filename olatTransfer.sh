@@ -138,11 +138,15 @@ rsync -av --progress --inplace --size-only --exclude='.*' $RSYNC_EXTRA_FLAGS "$S
 
 RSYNC_EXIT=$?
 
-if [[ $RSYNC_EXIT -ne 0 ]]; then
+
+if [[ $RSYNC_EXIT -eq 23 ]]; then
+    echo "☝️ rsync exit code $RSYNC_EXIT. Some folders may not be synchronized. This is usually the case if there are more student folders on OLAT than local."
+elif [[ $RSYNC_EXIT -ne 0 ]]; then
     echo "⚠️  rsync finished with errors (exit code $RSYNC_EXIT)."
 else
     echo "✅  Transfer finished."
 fi
+
 
 # ------------------------------------------------------------------
 # CLEAN UP
