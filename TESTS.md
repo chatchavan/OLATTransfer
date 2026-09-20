@@ -37,11 +37,17 @@ logic.
 `eject_webdav`/`finder_window_open_on_webdav` go through a compiled helper
 app (`OLATFinderHelper.app`) instead of calling `osascript` directly, so
 that macOS's Automation permission is specific to this project instead of
-generic `bash` (see `CLAUDE.md`, "Finder helper app"). Getting that
-specific entry needs two things: the app must be signed with a **real**
-(even self-signed) certificate — **not ad-hoc**, which silently doesn't
-get its own tracked entry at all — and that certificate must be **trusted
-for code signing**, which can't be scripted and needs one manual step.
+generic `bash` (see `CLAUDE.md`, "Finder helper app"). Getting a real,
+distinct, prompted entry needs three things together (all already built
+in, but each is a place this can silently regress if touched):
+1. It's a real `NSApplication` (imports `Cocoa`), not a plain
+   command-line-style binary.
+2. It's launched via `open` (LaunchServices), not a direct exec of
+   `Contents/MacOS/OLATFinderHelper`.
+3. Info.plist declares `NSAppleEventsUsageDescription`.
+On top of that, it must be signed with a **real** (even self-signed)
+certificate — **not ad-hoc** — and that certificate must be **trusted for
+code signing**, which can't be scripted and needs one manual step.
 
 ```bash
 ls -la "$HOME/Library/Application Support/OLATTransfer/OLATFinderHelper.app/Contents/MacOS/OLATFinderHelper"
@@ -76,19 +82,28 @@ hangs waiting for the same interactive dialog when run from a script or
 agent shell; it only works run directly by a human in Terminal, and even
 then it's the GUI dialog (not the command completing) that grants trust.
 
-Once properly signed:
+Once properly signed, call it the same way `call_finder_helper`
+(`olat-common.sh`) does — via `open -W`, with a result file as the third
+argument, **not** by executing the binary directly (that's the plain-
+CLI-binary approach that was tried and rejected — see CLAUDE.md):
 
 ```bash
-"$HOME/Library/Application Support/OLATTransfer/OLATFinderHelper.app/Contents/MacOS/OLATFinderHelper" check-window "/Volumes/lms.uzh.ch"
+rm -f /tmp/olat-test-result.txt
+open -W -a "$HOME/Library/Application Support/OLATTransfer/OLATFinderHelper.app" --args check-window "/Volumes/lms.uzh.ch" /tmp/olat-test-result.txt
+cat /tmp/olat-test-result.txt
 ```
 
 The first real Finder-touching call after this should prompt for
-Automation permission — approve it. Check
-**System Settings → Privacy & Security → Automation** for an
-**OLATFinderHelper** entry. If you instead only ever see it working under
-a generic **bash** or **Terminal** entry with no **OLATFinderHelper** line
-appearing, the signature likely reverted to ad-hoc (check `codesign -dv`
-again) or the cert's trust got reset.
+Automation permission (a proper dialog naming **OLATFinderHelper**) —
+approve it, then check **System Settings → Privacy & Security →
+Automation** for that entry. If instead it fails silently with `-1743` and
+**no dialog ever appears**, check the Info.plist has
+`NSAppleEventsUsageDescription` set (it's a hard requirement — without it
+macOS auto-denies without prompting at all, confirmed by testing). If you
+instead only ever see it working under a generic **bash** or **Terminal**
+entry with no **OLATFinderHelper** line appearing at all, the signature
+likely reverted to ad-hoc (check `codesign -dv` again) or the cert's trust
+got reset.
 
 ### 2.1 Trigger self-install
 
@@ -163,10 +178,12 @@ disconnect happens ~1 minute after the *second* run, not the first.
 
 **If this ever regresses** (the volume gets disconnected/the window closes
 despite being open), the fastest way to debug is calling the compiled
-helper directly, while the window is open:
+helper the same way `call_finder_helper` does, while the window is open:
 
 ```bash
-"$HOME/Library/Application Support/OLATTransfer/OLATFinderHelper.app/Contents/MacOS/OLATFinderHelper" check-window "/Volumes/lms.uzh.ch"
+rm -f /tmp/olat-test-result.txt
+open -W -a "$HOME/Library/Application Support/OLATTransfer/OLATFinderHelper.app" --args check-window "/Volumes/lms.uzh.ch" /tmp/olat-test-result.txt
+cat /tmp/olat-test-result.txt
 ```
 
 This should print a plain number ≥ 1 if a window is open on the volume (or

@@ -133,6 +133,8 @@ ensure_finder_helper() {
     <string>1</string>
     <key>LSUIElement</key>
     <true/>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>OLATFinderHelper needs to control Finder to mount/eject the OLAT WebDAV volume.</string>
 </dict>
 </plist>
 PLIST
@@ -156,12 +158,30 @@ PLIST
     fi
 }
 
+# call_finder_helper <cmd> <arg> - launches OLATFinderHelper.app via
+# `open -W` (a real NSApplication, launched through LaunchServices) and
+# returns its result. This specific combination - real NSApplication +
+# `open` launch + NSAppleEventsUsageDescription in Info.plist - is what
+# actually gets macOS to track this as its own distinct, prompted
+# Automation permission entry; see olat-finder-helper.swift and CLAUDE.md
+# for what was tried and ruled out before landing here. `open` doesn't
+# forward the launched app's stdout to the caller, so the result comes
+# back via a throwaway output file instead.
+call_finder_helper() {
+    local cmd="$1" arg="$2" outfile result
+    outfile=$(mktemp "${TMPDIR:-/tmp}/olat-finder-helper.XXXXXX")
+    open -W -a "$HELPER_APP" --args "$cmd" "$arg" "$outfile" 2>&1
+    result=$(cat "$outfile" 2>/dev/null)
+    rm -f "$outfile"
+    echo "$result"
+}
+
 eject_webdav() {
-    if [[ ! -x "$HELPER_APP_EXE" ]]; then
+    if [[ ! -d "$HELPER_APP" ]]; then
         echo "ERROR: OLATFinderHelper.app not built (see log)"
         return 1
     fi
-    "$HELPER_APP_EXE" eject "$SERVER" 2>&1
+    call_finder_helper eject "$SERVER"
 }
 
 # finder_window_open_on_webdav - true if any open Finder window is currently
@@ -170,9 +190,9 @@ eject_webdav() {
 # returns false / "no window open") if the helper can't tell, e.g. it isn't
 # built yet or lacks Automation permission.
 finder_window_open_on_webdav() {
-    [[ -x "$HELPER_APP_EXE" ]] || return 1
+    [[ -d "$HELPER_APP" ]] || return 1
     local count
-    count=$("$HELPER_APP_EXE" check-window "$WEBDAV_PREFIX" 2>/dev/null)
+    count=$(call_finder_helper check-window "$WEBDAV_PREFIX")
     [[ -n $count && $count -gt 0 ]]
 }
 

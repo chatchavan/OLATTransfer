@@ -91,14 +91,17 @@ while:
   3. Run `olatTransfer.sh` again — it re-signs `OLATFinderHelper.app` with
      that now-trusted certificate automatically. Check
      `~/Library/Logs/OLATTransfer/idle-eject.log` for a line ending in
-     `signed with local identity 'OLATFinderHelper Local Signing'`, and
-     check **System Settings → Privacy & Security → Automation** for the
-     **OLATFinderHelper** entry once it actually triggers Finder.
+     `signed with local identity 'OLATFinderHelper Local Signing'`.
 
-  Until you do this, the helper still works (ad-hoc signed), it just
-  can't get its own separate Automation entry — the first automatic eject
-  attempt will show up under **bash** as before. If disconnects don't seem
-  to be happening at all, check that log file.
+  Until you do this, the helper still works (ad-hoc signed), it just can't
+  get its own separate Automation entry.
+- **The next time it actually needs to eject or check a Finder window
+  after that**, you'll see a real, new **"OLATFinderHelper" would like to
+  control "Finder"** permission dialog — approve it. That's expected and
+  only happens once; after that it shows up as its own entry in
+  **System Settings → Privacy & Security → Automation**, separate from
+  Terminal or bash. If disconnects don't seem to be happening at all,
+  check `~/Library/Logs/OLATTransfer/idle-eject.log`.
 
 ## Requirements
 - Check if your macOS `rsync` supports the argument `--inplace`. This can be done by executing the following in the Terminal: `rsync --help | grep inplace`. It should show a line with `--inplace`.

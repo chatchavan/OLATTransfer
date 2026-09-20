@@ -226,7 +226,7 @@ specific to this project. `olat-finder-helper.swift` + `ensure_finder_helper`
 entry instead:
 
 - `ensure_finder_helper` compiles `olat-finder-helper.swift` with `swiftc`
-  into `$STATE_DIR/OLATFinderHelper.app` (a hand-built minimal bundle: just
+  into `$STATE_DIR/OLATFinderHelper.app` (a hand-built bundle:
   `Contents/Info.plist` + `Contents/MacOS/OLATFinderHelper`). The compile
   step is a no-op unless the binary is missing or older than the source.
   Called from `olatTransfer.sh` right alongside
@@ -234,45 +234,72 @@ entry instead:
   If `swiftc` isn't available (Xcode Command Line Tools not installed), it
   logs a warning and leaves the transfer itself unaffected — only the
   idle-eject Finder checks degrade (fail open/no-op).
-- **Ad-hoc signing turned out not to be enough** — confirmed by testing,
-  this is the important gotcha in this whole section. An ad-hoc signature
-  (`codesign --sign -`, no Team ID, hash changes every rebuild) doesn't get
-  its own tracked Automation entry at all: querying
-  `~/Library/Application Support/com.apple.TCC/TCC.db` directly showed
-  **no row** for `com.local.olattransfer.finderhelper` after a real,
-  successful automatic eject — the call had silently ridden on Terminal's
-  pre-existing `com.apple.Terminal -> com.apple.finder` grant instead of
-  creating a distinct one. So `ensure_signing_identity` (in
-  `olat-common.sh`) generates a local self-signed code-signing certificate
+- **Getting a real, distinct, prompted, persisted Automation entry took
+  three things together** — confirmed by extensive live testing (querying
+  `~/Library/Application Support/com.apple.TCC/TCC.db` directly after each
+  attempt), and dropping any one of them silently regresses to either
+  "works, but invisibly rides on Terminal/bash's existing grant" or "fails
+  outright with no prompt ever shown, so there's no way to grant it":
+  1. **A real `NSApplication` with an actual run loop** — `olat-finder-
+     helper.swift` imports `Cocoa`, not just `Foundation`. A plain
+     command-line-style Foundation binary (tried first) has its Apple
+     Events attributed to whatever process invoked it (bash, Terminal)
+     instead of being tracked as its own identity, *no matter how it's
+     signed or launched* — confirmed by testing ad-hoc vs. a real
+     certificate, and direct-exec vs. `open -a`, in every combination.
+  2. **Launched via `open` (LaunchServices), not a direct exec** of
+     `Contents/MacOS/OLATFinderHelper`. This is why `call_finder_helper`
+     (in `olat-common.sh`) uses `open -W -a "$HELPER_APP" --args ...`
+     instead of invoking the binary path directly. `open` doesn't forward
+     the launched app's stdout to the caller, so the result comes back via
+     a throwaway output file (the third `--args` element) that
+     `call_finder_helper` reads and deletes afterward; `-W` makes `open`
+     block until the app quits, keeping the call synchronous.
+  3. **`NSAppleEventsUsageDescription` in Info.plist.** Without it, a
+     request from an otherwise-correct real `NSApplication` launched via
+     `open` is *silently auto-denied* (`-1743`) with **no prompt shown at
+     all** — confirmed live, from an interactive Terminal session, not
+     just from a permission-less shell. It's not that nobody can see the
+     dialog; it's that no dialog is ever generated without this key.
+  Only once all three were true did a real System Settings dialog appear
+  and a genuine `com.local.olattransfer.finderhelper|2|com.apple.finder`
+  row show up in `TCC.db`.
+- **A local self-signed code-signing certificate is also required** —
+  ad-hoc signing (`codesign --sign -`, no Team ID, hash changes every
+  rebuild) doesn't get a stable identity at all, distinct-entry-eligible or
+  not. `ensure_signing_identity` (in `olat-common.sh`) generates one
   (`$CODESIGN_IDENTITY_CN`, "OLATFinderHelper Local Signing") via `openssl`
-  and imports it into the login keychain — this part is safe and
-  non-interactive. `ensure_finder_helper` then tries `codesign --sign
-  "$CODESIGN_IDENTITY_CN"` on *every* call (not just on rebuild, since
-  signing is cheap and this lets a later trust-completion take effect
-  immediately), falling back to ad-hoc if that identity isn't trusted yet.
-  **Setting that certificate's trust for code signing cannot be scripted**:
-  `security add-trusted-cert` hangs waiting for an interactive approval
-  dialog that can't be answered non-interactively (confirmed by testing —
-  it just hangs, doesn't error). It's a one-time manual step for the human
-  running this: Keychain Access → login keychain → My Certificates → find
-  the cert → Trust → Code Signing → Always Trust (see README). Until that's
-  done, the helper keeps working correctly, just ad-hoc-signed.
-- The Swift source is plain `Foundation`, not `AppKit` — deliberately. A
-  compiled AppleScript "applet" bundle (via `osacompile`) was tried first
-  and **rejected**: run directly as `Contents/MacOS/applet <args>` instead
-  of via `open -a ... --args`, it never exits (confirmed hanging
-  indefinitely in real testing, unrelated to Finder permissions — even a
-  command that never touches Finder hung) and argv arrives broken
-  (`Can't make item 1 into type Unicode text`). `NSAppleScript` executed
-  in-process from a plain Swift binary avoids both problems: it behaves
-  like an ordinary CLI tool (parse argv, run, print, exit), no app
-  lifecycle involved.
-- Interface: `OLATFinderHelper <eject|check-window> <arg>` — `eject`
-  ejects the named server (`eject_webdav` passes `$SERVER`), `check-window`
-  prints the count of open Finder windows whose target path starts with
-  the given prefix (`finder_window_open_on_webdav` passes
-  `$WEBDAV_PREFIX`). Both build the actual AppleScript source string in
-  Swift and run it via `NSAppleScript.executeAndReturnError`.
+  and imports it into the login keychain — safe and non-interactive.
+  `ensure_finder_helper` then tries `codesign --sign "$CODESIGN_IDENTITY_CN"`
+  on *every* call (not just on rebuild, so completing the trust step below
+  takes effect immediately), falling back to ad-hoc if that identity isn't
+  trusted yet. **Setting the certificate's trust for code signing cannot be
+  scripted**: `security add-trusted-cert` hangs waiting for an interactive
+  approval dialog that can't be answered non-interactively (confirmed by
+  testing — it hangs, doesn't error). It's a one-time manual step for the
+  human running this: Keychain Access → login keychain → My Certificates →
+  find the cert → Trust → Code Signing → Always Trust (see README). Until
+  that's done, the helper stays ad-hoc signed and works correctly, just
+  without its own trackable identity.
+- **Two other approaches were tried and rejected** before landing here:
+  - A compiled AppleScript "applet" (via `osacompile`) — run directly as
+    `Contents/MacOS/applet <args>` instead of via `open -a ... --args`, it
+    never exits (confirmed hanging indefinitely, unrelated to Finder
+    permissions — even a command that never touches Finder hung) and argv
+    arrives broken (`Can't make item 1 into type Unicode text`).
+  - A plain `Foundation`-only Swift binary (no Cocoa), direct-exec or
+    `open -a`, ad-hoc or properly signed — always "worked" by silently
+    riding whatever ancestor process's existing grant, never its own
+    tracked entry. This is why AppKit/`NSApplication` turned out to be
+    necessary, not optional, despite adding back some of the app-lifecycle
+    weight the `osacompile` rejection was trying to avoid.
+- Interface: `OLATFinderHelper <eject|check-window> <arg> <output-file>` —
+  `eject` ejects the named server (`eject_webdav` passes `$SERVER`),
+  `check-window` prints the count of open Finder windows whose target path
+  starts with the given prefix (`finder_window_open_on_webdav` passes
+  `$WEBDAV_PREFIX`) to `<output-file>`, then calls `NSApp.terminate(nil)` —
+  it never stays running. Both build the actual AppleScript source string
+  in Swift and run it via `NSAppleScript.executeAndReturnError`.
 - Deliberately scoped to only these two background/LaunchAgent-invoked
   calls. `olatTransfer.sh`'s own interactive `mount volume` AppleScript
   call still uses `osascript` directly under Terminal's existing
