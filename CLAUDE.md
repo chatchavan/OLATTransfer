@@ -101,7 +101,7 @@ succeeded:
    push is upload-only — and forces `--delete` off even for uploads (see
    below).
 5. **Transfer**:
-   - Normal mode: one `rsync -av --progress --inplace --size-only
+   - Normal mode: one `rsync -avi --progress --inplace --size-only
      --exclude='.*' ...` call across the whole `$SRC/` → `$DEST/` tree.
    - Quick mode (`-q`): loops over `$SRC`'s top-level subfolders, and for
      each one whose contents include a file newer than `lookback_days` ago
@@ -119,6 +119,22 @@ succeeded:
      OLAT has more student folders than exist locally), not a hard
      failure — in quick mode this is tracked across all the per-folder
      rsync calls, not just one.
+   - `-i`/`--itemize-changes` (added alongside `-av`) makes each rsync call
+     still stream its normal output live via `tee` into a per-call temp
+     log, which is then parsed back out (grep for the `<f`/`>f`
+     itemize-code lines, `*deleting ` lines) into `TRANSFERRED_FILES`/
+     `DELETED_FILES` arrays and printed as a summary ("Uploaded N file(s):"
+     / "Downloaded N file(s):", plus a "Deleted N file(s):" section when
+     `--delete` removed anything) after the transfer finishes. In quick
+     mode, `extract_rsync_summary` is called once per per-folder rsync
+     invocation with that folder's name as a prefix (`"$name/"`) — this
+     disambiguates identically-named files across different top-level
+     folders, since each quick-mode rsync call only sees one subfolder's
+     relative paths. `PIPESTATUS[0]` (not `$?`) is used to capture rsync's
+     own exit code through the `tee` pipe — this requires the `bash`
+     shebang (macOS's default `/bin/bash` 3.2 has `PIPESTATUS` but not
+     `mapfile`/`readarray`, which is why the summary arrays are built with
+     `while read` loops instead).
 6. **Cleanup** — the WebDAV volume is ejected only if `-d` was passed;
    otherwise it's left mounted deliberately, to avoid tripping UZH's
    connection-rate limiting from repeated mount/unmount cycles. This is

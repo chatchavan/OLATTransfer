@@ -154,6 +154,27 @@ echo "Direction: $DIRECTION"
 echo "Starting rsync------------------"
 
 RSYNC_EXIT=0
+TRANSFERRED_FILES=()
+DELETED_FILES=()
+
+# extract_rsync_summary <logfile> <prefix>
+#
+# rsync's -i (--itemize-changes) prefixes each changed regular file with an
+# "<f"/">f" code (see `man rsync`); parse those lines back out of a tee'd
+# log (rather than suppressing rsync's normal streaming output) and append
+# them to TRANSFERRED_FILES/DELETED_FILES. <prefix> disambiguates same-named
+# files across different top-level folders in quick mode.
+extract_rsync_summary() {
+    local log="$1" prefix="$2"
+
+    while IFS= read -r line; do
+        TRANSFERRED_FILES+=("${prefix}${line}")
+    done < <(grep -E '^[<>]f' "$log" | sed -E 's/^[^[:space:]]+[[:space:]]+//')
+
+    while IFS= read -r line; do
+        DELETED_FILES+=("${prefix}${line}")
+    done < <(grep '^\*deleting ' "$log" | sed 's/^\*deleting //')
+}
 
 if [[ $QUICK_MODE -eq 1 ]]; then
     LOOKBACK_DAYS=$(read_config_value lookback_days 14)
@@ -171,10 +192,13 @@ if [[ $QUICK_MODE -eq 1 ]]; then
         if find "$dir" -type f -not -path '*/.*' -newermt "$SINCE" -print -quit | grep -q .; then
             CHANGED_COUNT=$((CHANGED_COUNT + 1))
             echo "  -> changed: $name"
-            rsync -av --progress --inplace --size-only --exclude='.*' "$dir/" "$DEST/$name/"
-            code=$?
+            ITER_LOG=$(mktemp)
+            rsync -avi --progress --inplace --size-only --exclude='.*' "$dir/" "$DEST/$name/" | tee -a "$ITER_LOG"
+            code=${PIPESTATUS[0]}
             [[ $code -ne 0 && $code -ne 23 ]] && RSYNC_EXIT=$code
             [[ $code -eq 23 && $RSYNC_EXIT -eq 0 ]] && RSYNC_EXIT=23
+            extract_rsync_summary "$ITER_LOG" "$name/"
+            rm -f "$ITER_LOG"
         fi
     done
 
@@ -182,8 +206,11 @@ if [[ $QUICK_MODE -eq 1 ]]; then
         echo "Nothing changed in the last $LOOKBACK_DAYS day(s). Nothing to push."
     fi
 else
-    rsync -av --progress --inplace --size-only --exclude='.*' $RSYNC_EXTRA_FLAGS "$SRC/" "$DEST/"
-    RSYNC_EXIT=$?
+    RSYNC_LOG=$(mktemp)
+    rsync -avi --progress --inplace --size-only --exclude='.*' $RSYNC_EXTRA_FLAGS "$SRC/" "$DEST/" | tee -a "$RSYNC_LOG"
+    RSYNC_EXIT=${PIPESTATUS[0]}
+    extract_rsync_summary "$RSYNC_LOG" ""
+    rm -f "$RSYNC_LOG"
 fi
 
 
@@ -193,6 +220,25 @@ elif [[ $RSYNC_EXIT -ne 0 ]]; then
     echo "⚠️  rsync finished with errors (exit code $RSYNC_EXIT)."
 else
     echo "✅  Transfer finished."
+fi
+
+# ------------------------------------------------------------------
+# SUMMARIZE TRANSFERRED FILES
+
+VERB="Uploaded"
+[[ "$DIRECTION" == "download" ]] && VERB="Downloaded"
+
+echo ""
+echo "$VERB ${#TRANSFERRED_FILES[@]} file(s):"
+for f in "${TRANSFERRED_FILES[@]}"; do
+    echo "  $f"
+done
+
+if [[ ${#DELETED_FILES[@]} -gt 0 ]]; then
+    echo "Deleted ${#DELETED_FILES[@]} file(s):"
+    for f in "${DELETED_FILES[@]}"; do
+        echo "  $f"
+    done
 fi
 
 
