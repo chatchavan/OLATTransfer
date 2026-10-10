@@ -220,3 +220,107 @@ bash "/Users/chat/local_git/OLATTransfer/olatTransfer.sh" \
   that adds `-s` (off by default; same default as the script). Hint text:
   only needed if the command is launched from an app that carries
   `com.apple.provenance`.
+
+## Two-pane layout (UI draft v2, 2026-10-10)
+
+Supersedes the four-step window above in the canvas artboard "Two-pane layout".
+Left column = Source, right = Destination, each with an editable path field
+(paste allowed), a folder button, drag-and-drop of a folder onto the column,
+and a tree. Under the columns: an editable list of pattern rows (text field,
+"matches N of M listed", remove, "Add pattern"); at the bottom a status bar
+plus an action bar (buttons not designed yet). The script still decides the
+direction from which side is on the mount.
+
+Tree listing rules (the tree exists only to help design wildcards):
+
+- **OLAT source: sample, do not scan.** List only the first 5 folders of the
+  source root. A grey item says "Only the first 5 of N folders are listed…;
+  the pattern applies to all N". Pattern rows show "matches X of 5 listed".
+- **Depth in steps of 3 levels.** Levels are counted below the source root
+  (student = 1, Participant Drop Box = 2, a1.1 = 3). A first listing goes 3
+  levels deep; every folder at the cut-off depth that may have more inside
+  gets a clickable item as its last child ("Showing N levels deep. Click to
+  load 3 levels deeper"), and a click loads 3 more levels for that folder
+  only. Never recurse unbounded over WebDAV.
+- **Chooser (Literal | Any (*) | Custom)** appears only under the clicked row.
+  Rows already used by the pattern show their mode as a small tag.
+- **Right column = live preview of the destination after the transfer.**
+  Computed locally and instantly: build a throwaway tree of empty files and
+  folders from the cached listing of the 5 sampled folders (to the loaded
+  depth), then run the real `rsync -n -i` with the script's own filter
+  arguments (from `build_pattern_filters`, not re-implemented) against it,
+  and merge the result with the existing destination folder. Re-run on every
+  pattern edit (debounced). Rules decided 2026-10-10:
+  - Merge incoming and existing items, shown by row colour (no chips): green
+    = new, default background = already there, yellow = differs in size (same
+    `--size-only` rule as the real run), dimmed = existing item the pattern
+    does not write. A legend of colour swatches sits in the pane header; rows
+    also carry a `title` with the status, so it is not colour-only.
+  - Markers (`already there`, `differs in size`, counts) are shown only for
+    data actually fetched from OLAT: the first 5 folders, 6 levels deep at
+    first. Items below the fetched depth show "not loaded yet"; loading
+    deeper in the source tree extends the preview. No extra WebDAV listing is
+    made just for the preview.
+  - Left tree follows the pattern live: rows matched by any pattern are
+    highlighted, rows that cannot match are dimmed; folders on the way to a
+    match (student, Participant Drop Box) stay normal.
+  - Show all sampled students expanded (not collapsed to "+ N like this").
+  - Labelled "Based on the 5 listed folders of N". A separate button runs the
+    full dry run (`olatTransfer.sh -n …`) for exact numbers.
+  - Upload: the right column is the OLAT side; folders that do not exist there
+    yet are marked "new folder" (they get created on OLAT).
+- **No "WebDAV mounted" indicator.** The mount state is shown only on
+  failure, inline where it matters: when a path under `/Volumes/lms.uzh.ch`
+  cannot be listed, that column's tree is replaced by "WebDAV is not mounted"
+  with a Retry button (the GUI still never mounts), the path field gets an
+  error border, and the preview says "Nothing to preview until the source
+  folder can be listed". The mount is checked when an OLAT path is dropped,
+  pasted or listed; no background polling. Artboard "WebDAV not mounted".
+- **Pane header is one line**: label ("Source" / "Destination"), editable path
+  field, folder button. No "OLAT"/"Local" chips; the side is inferred from the
+  path. Drag-and-drop of a folder onto a column sets its path.
+- **Status bar** (left: empty for now; right: three icon buttons):
+  - Cogwheel → pop-up menu with the checkbox "Disconnect WebDAV when done"
+    (`-d`), checked by default. Stored in the app settings, applied to the
+    generated command and to Run.
+  - Play → pop-up with "Dry-run" and "Run".
+    - **Run** opens a dialog modelled on panel "5. Run" of
+      `student-work-files-organizer`: Run again, Abort, Copy output; a summary
+      line; a dark selectable output pane that starts with the command line
+      (`▶ bash …`) and streams the script's output.
+    - **Dry-run opens its own window, one per dry run** (title carries the
+      time and the folders, so several can stay open and be compared). The
+      window shows: the command; a "Dry run: nothing was copied" badge and a
+      summary ("41 matching folders · 1,203 files · 3 students without this
+      path"; for uploads also "1 student folder would be created on OLAT");
+      tabs Matches (one row per matching folder with file count, a "students
+      without this path" disclosure, a warning for folders that would be
+      created on OLAT) and Output (raw output, copyable); footer with run time
+      and exit code, Copy output, Close. Dry-run adds `-n` and never `-d`, so
+      the volume stays mounted for browsing.
+  - Save → dialog with the "Generated .command" block and the buttons Save
+    .command (native save panel, `chmod +x`), Save & run in Terminal, Copy
+    command. The file name and folder come from the native save panel.
+  Generated command: one `-m` per pattern row, `-d` first when the checkbox is
+  on; the metadata block gains `# disconnect=yes|no`.
+- **Dry-run window** also has a "Run" button (red) in its footer that runs the
+  same command for real; all its views (command, Matches list, Output) scroll
+  when long.
+- **Open existing .command…** is a folder-icon button at the left end of the
+  status bar (tooltip "Open existing .command…"). It reads the
+  `# olat-command-maker` metadata block, fills paths, patterns and options, and
+  refuses files without that block.
+- **Cogwheel menu** also has "Remove macOS ._ files after upload" (`-s`): off
+  by default, enabled only when the destination is OLAT (disabled with the hint
+  "Only for uploads to OLAT" otherwise).
+- **Upload layout** (artboard "Two-pane layout: upload"): source = local folder,
+  listed completely; destination = OLAT preview. The OLAT side is compared only
+  for the first 5 local student folders ("Compared with OLAT for the first 5 of
+  7…"). Student folders missing on OLAT are green and named in a warning at the
+  top ("Uploading creates 1 folder on OLAT… Nothing on OLAT is deleted when
+  patterns are used"); OLAT-only files stay visible, dimmed.
+- **Local source: the limits do not apply.** No "first 5" cap and no 3-level
+  step: expand any folder and list all its entries (a local listing is cheap).
+  Pattern rows then need no "of N listed" count (or can show an exact count
+  from the local listing). Same chooser, same pattern syntax. For an upload the
+  OLAT side is only the destination root.
