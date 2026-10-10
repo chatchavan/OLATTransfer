@@ -1,0 +1,15 @@
+{
+  "name": "olat-command-maker",
+  "version": "0.1.0",
+  "description": "Generates .command files for OLATTransfer",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "postinstall": "node scripts/ensure-electron.mjs",
+    "start": "node scripts/ensure-electron.mjs && electron .",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "devDependencies": {
+    "electron": "^44.4.5"
+  }
+}

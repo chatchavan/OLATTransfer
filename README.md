@@ -78,6 +78,22 @@ olatTransfer.sh -m "*/Participant Drop Box/a1.1" \
 - Offline tests: `/bin/bash tests/pattern-offline.sh`. The WebDAV-only checks
   are in [`docs-dev/webdav-test-plan.md`](docs-dev/webdav-test-plan.md).
 
+## Command Maker (GUI)
+
+`command-maker.command` (double-click) starts a small Electron app that builds
+`.command` files for pattern transfers. Pick a source and a destination folder
+(type, paste, drop or browse; one side must be on the mounted OLAT volume),
+click folders in the source tree to build wildcard patterns (Literal, Any `*`
+or Custom per level; right click a folder to set it as the source or destination root), and watch the preview of the destination update as you
+type. Then Save the `.command`, or Dry-run / Run it from the app. The app
+never transfers anything itself: it always runs `olatTransfer.sh`. The
+WebDAV volume must already be mounted (any `olatTransfer.sh` run mounts it).
+
+Needs Node and the shared Electron binary (see `gui/package.json`; first start
+runs `npm install --ignore-scripts`). Design and behaviour:
+[`docs-dev/command-maker-gui.md`](docs-dev/command-maker-gui.md). Tests:
+`cd gui && npm test`.
+
 ## Idle auto-disconnect
 
 Leaving the WebDAV connection mounted (the default when you omit `-d`) is

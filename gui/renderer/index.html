@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<title>OLAT Command Maker</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="win" id="win">
+  <header class="tb"><div class="tb-title">OLAT Command Maker</div></header>
+
+  <div class="panes">
+    <section class="pane" id="pane-src" aria-labelledby="lab-src">
+      <div class="row">
+        <h2 class="lab" id="lab-src">Source</h2>
+        <input class="in" id="in-src" type="text" spellcheck="false" aria-label="Source path" placeholder="Drop a folder here, or paste a path">
+        <button class="btn icon" id="browse-src" type="button" aria-label="Browse for source folder" title="Browse for source folder"></button>
+      </div>
+      <div class="tree" id="tree-src"></div>
+    </section>
+
+    <div class="mid" id="arrow" aria-hidden="true"></div>
+
+    <section class="pane" id="pane-dst" aria-labelledby="lab-dst">
+      <div class="row">
+        <h2 class="lab" id="lab-dst">Destination</h2>
+        <input class="in" id="in-dst" type="text" spellcheck="false" aria-label="Destination path" placeholder="Drop a folder here, or paste a path">
+        <button class="btn icon" id="browse-dst" type="button" aria-label="Browse for destination folder" title="Browse for destination folder"></button>
+      </div>
+      <div class="tree" id="tree-dst"></div>
+    </section>
+  </div>
+
+  <section class="pats" aria-labelledby="pt">
+    <div class="pats-h">
+      <b id="pt">Patterns</b><span class="sub">relative to the source folder; a path is transferred if it matches any row</span>
+      <button class="btn ghost sm" id="add-pattern" type="button"></button>
+    </div>
+    <div id="patterns"></div>
+  </section>
+
+  <div id="menu-layer"></div>
+
+  <footer class="bar">
+    <button class="btn icon" id="open-cmd" type="button" aria-label="Open existing .command…" title="Open existing .command…"></button>
+    <div class="status" id="status" role="status"></div>
+    <div class="tools">
+      <div class="menu-wrap"><button class="btn icon" id="btn-gear" type="button" aria-label="Settings" title="Settings" aria-haspopup="menu"></button><div id="pop-gear"></div></div>
+      <div class="menu-wrap"><button class="btn icon primary" id="btn-play" type="button" aria-label="Run" title="Run" aria-haspopup="menu"></button><div id="pop-play"></div></div>
+      <button class="btn icon" id="btn-save" type="button" aria-label="Save .command" title="Save .command"></button>
+    </div>
+  </footer>
+
+  <div id="modal-layer"></div>
+</div>
+<script src="../lib/shell.js"></script>
+<script src="../lib/pattern.js"></script>
+<script src="../lib/command.js"></script>
+<script src="../lib/summary.js"></script>
+<script src="dev-stub.js"></script>
+<script src="ui.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

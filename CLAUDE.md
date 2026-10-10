@@ -24,14 +24,25 @@ volume:
   and the `-q`/plain regressions against scratch trees with the
   Keychain/mount stage cut out (see "Running / testing changes"). Run it
   with `/bin/bash`, the same bash 3.2 the tool runs under.
+- `gui/` — **OLAT Command Maker**, a self-contained Electron app (own
+  `package.json`, shared Electron binary, no bundler) that generates and
+  previews `.command` files for `-m` transfers. Start with
+  `command-maker.command`. It never transfers anything itself: Run/Dry-run
+  spawn `olatTransfer.sh`, and the live preview feeds the real
+  `build_pattern_filters` arguments to a local `rsync -n`. Design:
+  `docs-dev/command-maker-gui.md`. Tests: `cd gui && npm test`
+  (`node --test`, real bash/rsync, no WebDAV).
 - `config.yml` — the only tunable settings (quick-push lookback window,
   idle-disconnect timing).
 
-There is no build system, package manifest, or linter. The only automated
-test is `tests/pattern-offline.sh`; everything involving the real WebDAV
-mount is manual (`TESTS.md`, `docs-dev/webdav-test-plan.md`). A GUI that
-generates `.command` files is designed in `docs-dev/command-maker-gui.md`
-(not built yet; it will live in its own `gui/` folder).
+The Bash tool itself has no build system, package manifest, or linter. Its
+automated test is `tests/pattern-offline.sh`; everything involving the real
+WebDAV mount is manual (`TESTS.md`, `docs-dev/webdav-test-plan.md`). The GUI
+in `gui/` is the only place with a `package.json` and has its own tests
+(`cd gui && npm test`). If you change `build_pattern_filters`,
+`validate_pattern` or the `-m/-n/-s/-d` options, run both suites: the GUI
+tests call the real functions in `olat-common.sh` and rebuild the `.command`
+format.
 
 rsync here is **macOS's built-in `openrsync`** (BSD, protocol 29), not GNU
 rsync — it has no `--update`/`-u` flag. Don't assume GNU-rsync flags are
