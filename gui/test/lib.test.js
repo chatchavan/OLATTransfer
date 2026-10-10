@@ -268,3 +268,13 @@ test('preview: existing items under an unlisted target are "pending", not "not t
     assert.equal(by['S1/Box/other/x.txt'], 'existing')
   } finally { fs.rmSync(dst, { recursive: true, force: true }) }
 })
+
+test('rebasePattern drops the levels a new source root covers', () => {
+  assert.equal(Pattern.rebasePattern('*/Participant Drop Box/a1.1', ['Example Student A']), 'Participant Drop Box/a1.1')
+  assert.equal(Pattern.rebasePattern('Example Student A/Box/a1.1', ['Example Student A']), 'Box/a1.1')
+  assert.equal(Pattern.rebasePattern('*/Participant Drop Box/a1.1', ['Example Student A', 'Participant Drop Box']), 'a1.1')
+  assert.equal(Pattern.rebasePattern('Other/Box/a1.1', ['Example Student A']), null)
+  assert.equal(Pattern.rebasePattern('*/a1.1', ['x', 'a1.1', 'y']), null)       // pattern shorter than the path
+  assert.equal(Pattern.rebasePattern('x\\[1\\]/a', ['x[1]']), 'a')               // escaped literal
+  assert.equal(Pattern.rebasePattern('*', ['x']), null)                          // nothing would be left
+})

@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('api', {
   preview: (params) => call('preview:run', params),
   saveCommand: (params) => call('command:save', params),
   copy: (text) => call('clipboard:write', text),
+  contextMenu: (items) => call('menu:context', items),
   run: {
     start: (params) => call('run:start', params),
     abort: () => call('run:abort'),

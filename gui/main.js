@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, clipboard, screen } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, clipboard, screen, Menu } = require('electron')
 const { spawn, execFile } = require('child_process')
 const fs = require('fs')
 const path = require('path')
@@ -9,7 +9,7 @@ const Preview = require('./lib/preview.js')
 const Settings = require('./lib/settings.js')
 
 // Test hooks (self-check runs only): CM_USER_DATA, CM_OLAT_PREFIX, CM_TEST_DIALOG,
-// CM_SCREENSHOT, CM_SCRIPT, CM_WAIT, CM_SCRIPT_PATH (stand-in for olatTransfer.sh), CM_SHOT_TARGET=dryrun.
+// CM_SCREENSHOT, CM_SCRIPT, CM_WAIT, CM_SCRIPT_PATH (stand-in for olatTransfer.sh), CM_SHOT_TARGET=dryrun, CM_TEST_MENU (id chosen in context menus).
 if (process.env.CM_USER_DATA) app.setPath('userData', process.env.CM_USER_DATA)
 
 const REPO = path.resolve(__dirname, '..')
@@ -180,6 +180,13 @@ handle('dryrun:close', (event) => { const j = jobOf(event); j.win.close() })
 handle('app:info', () => ({ scriptPath: SCRIPT, olatPrefix: OLAT_PREFIX, home: app.getPath('home') }))
 handle('settings:load', () => Settings.load(app.getPath('userData')))
 handle('settings:save', (_e, s) => { Settings.save(app.getPath('userData'), s) })
+// Native context menu. items: [{id, label, enabled?}] -> {id} of the chosen item or {id: null}.
+handle('menu:context', (event, items) => new Promise((resolve) => {
+  if (process.env.CM_TEST_MENU) return resolve({ id: process.env.CM_TEST_MENU })
+  let chosen = null
+  const menu = Menu.buildFromTemplate(items.map((i) => ({ label: i.label, enabled: i.enabled !== false, click: () => { chosen = i.id } })))
+  menu.popup({ window: BrowserWindow.fromWebContents(event.sender), callback: () => setTimeout(() => resolve({ id: chosen }), 20) })
+}))
 handle('clipboard:write', (_e, text) => { clipboard.writeText(String(text)) })
 
 handle('path:info', (_e, p) => {

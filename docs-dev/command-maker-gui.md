@@ -97,11 +97,18 @@ The left tree exists to design wildcards, not to browse everything.
 - **OLAT source: sample, do not scan.** List only the first 5 folders of the
   source root. A grey item says "Only the first 5 of N folders are listed…; the
   pattern applies to all N".
-- **Depth in steps of 3 levels** (below the source root: student = 1,
-  Participant Drop Box = 2, a1.1 = 3). The first listing goes 3 levels deep.
+- **Depth: 4 levels at first, then steps of 3** (below the source root: student
+  = 1, Participant Drop Box = 2, a1.1 = 3, its files and folders = 4). The first
+  listing goes 4 levels deep (`INITIAL_DEPTH` in `app.js`).
   A folder at the cut-off that has not been listed shows, when opened, a
   clickable item "Showing N levels deep. Click to load 3 levels deeper"; a click
   loads 3 more levels for that folder only.
+- **Same path in every sampled folder.** Whenever the pattern is built from a
+  folder or file (a click in the tree) or "load deeper" is used, the same
+  relative path is listed in all 5 sampled folders (ancestors one level at a
+  time, the clicked folder one level, or 3 levels for "load deeper"), so the
+  pattern is always judged against all of them. Nothing is listed that is not
+  on that path. The header dot pulses while this runs.
 - **Local source: no limits.** Expanding a folder lists all its entries.
 - Hidden entries (`.*`) are never shown (the script excludes them).
 - **Chooser** (Literal | Any (`*`) | Custom + text field) appears only under the
@@ -109,6 +116,13 @@ The left tree exists to design wildcards, not to browse everything.
 - **The tree follows the patterns live**: rows matched by a pattern are
   highlighted, rows that cannot match are dimmed, folders on the way to a match
   (student, Participant Drop Box) stay normal.
+
+- **Right click on a folder** opens a native context menu: in the source tree
+  "Set as Source", in the preview tree "Set as Destination". The folder becomes
+  the root of that side. Patterns are rebased for a new source: leading levels
+  that equal the folder's path (same name, or `*`) are dropped, so
+  `*/Participant Drop Box/a1.1` becomes `Participant Drop Box/a1.1` after
+  "Set as Source" on a student folder; other patterns stay as they are.
 
 ### Patterns panel
 
@@ -140,7 +154,7 @@ change.
   yellow = differs in size (same `--size-only` rule as the real run), dimmed =
   exists at the destination but the pattern does not write it. A legend of
   swatches sits in the pane header; rows carry a `title` with the status.
-- Markers exist only for data actually fetched from OLAT (first 5 folders, 6
+- Markers exist only for data actually fetched from OLAT (first 5 folders, 4
   levels at first); deeper levels show "not loaded yet" and loading deeper in
   the source tree extends the preview. The preview adds no WebDAV listing of
   its own, except for an upload, which lists the matching folders on the OLAT
@@ -249,6 +263,8 @@ gui/renderer/           index.html + app.js (main window), dryrun.html/js, ui.js
   *dim* when it is not in the matches, otherwise normal (on the way). Rows
   outside the sample cannot occur for OLAT; for a local source the matches are
   computed on the whole local folder.
+- `mirrorPath()` in `app.js` implements the same-path-in-all-samples listing;
+  the context menu is a native `Menu` opened from main (`menu:context`).
 - Identical patterns (after normalising a trailing `/`) count once.
   Dry-run never passes `-d`; `-s` is only passed for uploads.
 - Dry-run window: main spawns the script (`detached`, killed as a group on
@@ -260,7 +276,7 @@ gui/renderer/           index.html + app.js (main window), dryrun.html/js, ui.js
   `CM_OLAT_PREFIX` (treat another folder as the OLAT volume), `CM_SCRIPT_PATH`
   (stand-in for `olatTransfer.sh`), `CM_TEST_DIALOG` (answer for every native
   dialog), `CM_SCRIPT` (JS file run in the page), `CM_SCREENSHOT`,
-  `CM_SHOT_TARGET=dryrun`, `CM_WAIT`. Example:
+  `CM_SHOT_TARGET=dryrun`, `CM_TEST_MENU` (id chosen in context menus), `CM_WAIT`. Example:
   `CM_USER_DATA=/tmp/ud CM_OLAT_PREFIX=/tmp/fakeolat CM_SCRIPT=check.js CM_SCREENSHOT=/tmp/a.png npx electron .`
   (with the two Electron variables exported, see the global CLAUDE.md).
 - Verified without WebDAV: unit/integration tests (quoting against real bash,

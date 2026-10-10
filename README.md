@@ -84,7 +84,7 @@ olatTransfer.sh -m "*/Participant Drop Box/a1.1" \
 `.command` files for pattern transfers. Pick a source and a destination folder
 (type, paste, drop or browse; one side must be on the mounted OLAT volume),
 click folders in the source tree to build wildcard patterns (Literal, Any `*`
-or Custom per level), and watch the preview of the destination update as you
+or Custom per level; right click a folder to set it as the source or destination root), and watch the preview of the destination update as you
 type. Then Save the `.command`, or Dry-run / Run it from the app. The app
 never transfers anything itself: it always runs `olatTransfer.sh`. The
 WebDAV volume must already be mounted (any `olatTransfer.sh` run mounts it).

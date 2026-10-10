@@ -6,7 +6,8 @@
   const api = window.api
 
   const SAMPLE = 5          // folders sampled at the OLAT source root
-  const STEP = 3            // levels per listing step on OLAT
+  const INITIAL_DEPTH = 4   // levels listed at first for the sampled OLAT folders
+  const STEP = 3            // levels per "load deeper" step on OLAT
   const $ = (id) => document.getElementById(id)
 
   // ------------------------------------------------------------------ state
@@ -116,7 +117,7 @@
     if (S.srcInfo && S.srcInfo.kind !== 'dir') { S.tree = { state: 'error', code: 'NOT_FOUND', message: '' }; renderAll(); return }
     const olat = olatLike(S.src)
     const mine = S.src
-    const r = await api.tree(S.src, olat ? { depth: STEP, firstN: SAMPLE } : { depth: 1 })
+    const r = await api.tree(S.src, olat ? { depth: INITIAL_DEPTH, firstN: SAMPLE } : { depth: 1 })
     if (mine !== S.src) return
     const res = r.ok ? r.value || r : null
     if (!r.ok || (r.value && r.value.ok === false)) {
@@ -141,7 +142,7 @@
     return node
   }
 
-  async function loadChildren(node, depth) {
+  async function loadChildren(node, depth, quiet) {
     node.loading = true
     renderSrcTree()
     const r = await api.tree(joinPath(S.src, node.rel), { depth })
@@ -155,7 +156,34 @@
       node.children = mkNodes(v.entries, node.rel)
     }
     renderSrcTree()
-    schedulePreview()
+    if (!quiet) schedulePreview()
+  }
+
+  // OLAT source: list the same path in every sampled top-level folder, so the pattern is
+  // always judged against all of them. `rel` is the folder whose content is wanted; its
+  // ancestors are listed one level at a time, the folder itself `depth` levels deep.
+  let mirrorCount = 0
+  async function mirrorPath(rel, depth) {
+    if (!olatLike(S.src) || !rel.length || S.tree.state !== 'ok') return
+    const names = sampleNames()
+    mirrorCount++
+    renderSrcTree()
+    try {
+      await Promise.all(names.map(async (top) => {
+        const relT = [top].concat(rel.slice(1))
+        for (let i = 1; i <= relT.length; i++) {
+          const node = nodeAt(relT.slice(0, i))
+          if (!node || !node.dir) return
+          if (node.children !== null) continue
+          if (node.loading || node.error) return
+          await loadChildren(node, i === relT.length ? depth : 1, true)
+        }
+      }))
+    } finally {
+      mirrorCount--
+      renderSrcTree()
+      schedulePreview()
+    }
   }
 
   function toggleNode(node) {
@@ -188,6 +216,9 @@
     renderSrcTree()
     persist()
     schedulePreview()
+    const node = nodeAt(rel)
+    const target = node && node.dir ? rel : rel.slice(0, -1)
+    mirrorPath(target, 1)
   }
 
   function setLevelMode(row, idx, mode) {
@@ -361,6 +392,7 @@
     }, node.dir ? ic(node.open ? 'chevD' : 'chevR') : null)
     return h('div', {
       class: cls.join(' '), role: 'treeitem', style: { paddingLeft: pad + 'px' }, 'aria-expanded': node.dir ? String(node.open) : null,
+      oncontextmenu: (e) => { if (node.dir && node.rel.length) { e.preventDefault(); contextSet('src', joinPath(S.src, node.rel)) } },
       onclick: () => { if (node.dir && !node.open) { node.open = true; if (node.children === null && !olatLike(S.src)) loadChildren(node, 1) } setExample(node.rel) },
       ondblclick: () => { if (node.dir) toggleNode(node) }
     },
@@ -376,8 +408,8 @@
       if (n.dir && n.open) {
         if (n.children) srcRows(n.children, depth + 1, out)
         else if (olatLike(S.src) && !n.loading) {
-          out.push(h('button', { class: 'more load', type: 'button', style: { marginLeft: (6 + 18 * (depth + 1)) + 'px', width: 'auto' }, onclick: () => loadChildren(n, STEP) },
-            ic('chevD'), 'Not listed yet. Click to load ' + STEP + ' levels of ' + n.name + '.'))
+          out.push(h('button', { class: 'more load', type: 'button', style: { marginLeft: (6 + 18 * (depth + 1)) + 'px', width: 'auto' }, onclick: () => mirrorPath(n.rel, STEP) },
+            ic('chevD'), 'Not listed yet. Click to load ' + STEP + ' levels of ' + n.name + ' (in all ' + Math.min(SAMPLE, sampleNames().length) + ' sampled folders).'))
         }
         if (n.error) out.push(h('div', { class: 'more', style: { marginLeft: (6 + 18 * (depth + 1)) + 'px' } }, ic('alert'), 'Cannot list this folder (' + n.error + ').'))
       }
@@ -403,7 +435,7 @@
       const legend = h('span', { class: 'legend' },
         h('span', { class: 'lg' }, h('span', { class: 'sw sw-hit' }), 'matched'), h('span', { class: 'lg' }, h('span', { class: 'sw sw-dim' }), 'not matched'))
       const title = olatLike(S.src) ? 'Source sample' : 'Source folder'
-      const head = h('div', { class: 'tree-h' }, h('span', { class: 'live' }, t.state === 'loading' ? h('span', { class: 'dot busy' }) : null, h('b', {}, title)), legend)
+      const head = h('div', { class: 'tree-h' }, h('span', { class: 'live' }, t.state === 'loading' || mirrorCount > 0 ? h('span', { class: 'dot busy' }) : null, h('b', {}, title)), legend)
       let body
       if (t.state === 'idle') body = h('div', { class: 'empty' }, 'Choose or drop a source folder.')
       else if (t.state === 'loading') body = h('div', { class: 'empty' }, ic('spinner', 'spin'), '  listing…')
@@ -442,7 +474,10 @@
         renderDstTree()
       }
     }, row.dir ? ic(open ? 'chevD' : 'chevR') : null)
-    return h('div', { class: cls.join(' '), role: 'treeitem', title, style: { paddingLeft: (6 + 18 * row.depth) + 'px' } },
+    return h('div', {
+      class: cls.join(' '), role: 'treeitem', title, style: { paddingLeft: (6 + 18 * row.depth) + 'px' },
+      oncontextmenu: (e) => { if (row.dir && row.status !== 'unloaded') { e.preventDefault(); contextSet('dst', joinPath(S.dst, row.path.split('/'))) } }
+    },
       chev, ic(row.status === 'unloaded' ? 'info' : row.dir ? 'folder' : 'file'), h('span', { class: 'nm' }, row.name), row.status === 'existing' && !row.dir ? h('span', { class: 'cnt' }, 'not touched') : null)
   }
 
@@ -645,6 +680,22 @@
   }
 
   // ------------------------------------------------------------------ actions
+  // Right click on a folder: use it as the root of the transfer instead.
+  async function contextSet(side, absPath) {
+    const res = await api.contextMenu([{ id: 'set', label: side === 'src' ? 'Set as Source' : 'Set as Destination' }])
+    if (!(res.ok && res.value && res.value.id === 'set')) return
+    if (side === 'src') {
+      // patterns are relative to the source root: drop the levels that the new root now covers
+      const rel = absPath.slice(S.src.length).split('/').filter(Boolean)
+      for (const row of S.patterns) {
+        const r = Pattern.rebasePattern(row.text, rel)
+        if (r !== null) { row.text = r; row.levels = null }
+      }
+      S.selected = null
+    }
+    setPath(side, absPath)
+  }
+
   async function saveCommand(runInTerminal) {
     S.saveMsg = ''; S.saveErr = ''
     const r = readiness()
@@ -789,6 +840,6 @@
     if (S.src) loadSource()
   }
 
-  window.__cm = { S, setPath, runPreview, addPattern, setExample, nodeAt, loadSource, loadChildren, toggleNode, renderAll }   // self-check hook
+  window.__cm = { S, mirrorPath, setPath, runPreview, addPattern, setExample, nodeAt, loadSource, loadChildren, toggleNode, renderAll }   // self-check hook
   init()
 })()

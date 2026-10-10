@@ -107,6 +107,7 @@
     preview: async (p) => preview(p),
     saveCommand: async () => ({ ok: true, value: { path: '/Users/chat/Documents/OLAT commands/a1.1-download.command' } }),
     copy: async () => ({ ok: true }),
+    contextMenu: async () => ({ ok: true, value: { id: null } }),
     run: {
       start: async (p) => { setTimeout(() => { runCb && runCb({ type: 'start', cmd: 'bash olatTransfer.sh …' }); runCb && runCb({ type: 'out', text: OUT }); runCb && runCb({ type: 'exit', code: 0 }) }, 200); return { ok: true, value: {} } },
       abort: async () => ({ ok: true }),

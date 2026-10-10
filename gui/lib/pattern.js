@@ -52,9 +52,21 @@
     return p.split('/').length
   }
 
+  // The pattern as seen from a sub-folder of the source root: when its first levels
+  // are exactly that folder's path (the same name, or *), they are dropped. Returns
+  // the new pattern, or null when it does not start with that path.
+  function rebasePattern(pattern, rel) {
+    const levels = pattern.split('/')
+    if (levels.length <= rel.length) return null
+    for (let i = 0; i < rel.length; i++) {
+      if (levels[i] !== '*' && levels[i] !== escapeLiteral(rel[i])) return null
+    }
+    return levels.slice(rel.length).join('/')
+  }
+
   function hasNonAscii(text) {
     return /[^\x00-\x7f]/.test(text)
   }
 
-  return { escapeLiteral, validatePattern, levelText, levelsToPattern, levelsFromPath, patternLevels, hasNonAscii }
+  return { escapeLiteral, validatePattern, levelText, levelsToPattern, levelsFromPath, patternLevels, rebasePattern, hasNonAscii }
 })
