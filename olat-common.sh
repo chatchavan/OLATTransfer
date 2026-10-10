@@ -41,6 +41,116 @@ touch_last_used() {
     touch "$STAMP_FILE"
 }
 
+# remove_upload_sidecars <dest-root> - after an upload, deletes the AppleDouble
+# "._<name>" files that the macOS WebDAV client wrote next to the items this
+# run uploaded or created. Reads the globals TRANSFERRED_FILES (files rsync
+# sent) and CREATED_DIRS (folders rsync created), both relative to <dest-root>.
+#
+# Why: macOS attaches `com.apple.provenance` to every file/folder a process
+# creates, including rsync's. The WebDAV client can't store an extended
+# attribute on the server, so it writes it into a `._<name>` file beside the
+# item - visible on OLAT to everyone who can see the folder. rsync can't
+# prevent this (it's not a flag and `--exclude='.*'` only stops LOCAL `._`
+# files from being sent).
+#
+# Deliberately narrow, because this deletes files on the server: only the
+# sidecar of an item this run itself wrote, only if it is a regular file named
+# `._<basename of that item>`, only if the item still exists, and never
+# anything else (no globbing, no pre-existing `._` files, no other folders).
+# Echoes the number removed.
+remove_upload_sidecars() {
+    local root="${1%/}" item dir base sidecar removed=0
+    [[ -n $root && -d $root ]] || { echo 0; return; }
+
+    for item in "${TRANSFERRED_FILES[@]}" "${CREATED_DIRS[@]}"; do
+        [[ -n $item ]] || continue
+        item="${item%/}"
+        base="${item##*/}"
+        [[ $item == */* ]] && dir="${item%/*}/" || dir=""
+        [[ $base == ._* ]] && continue          # never touch an item that is itself a ._ file
+        sidecar="$root/$dir._$base"
+        if [[ -e "$root/$item" && -f "$sidecar" && ! -L "$sidecar" ]]; then
+            rm -f -- "$sidecar" && removed=$((removed + 1))
+        fi
+    done
+    echo "$removed"
+}
+
+# validate_pattern <pattern> - checks a `-m` path pattern. Prints the reason
+# and returns 1 if it's unusable. A pattern is relative to the transfer root,
+# uses rsync wildcards (* ? [...]) and `/` between folder levels.
+validate_pattern() {
+    local pattern="$1" seg
+    local -a segs
+
+    if [[ -z $pattern ]]; then
+        echo "pattern is empty"; return 1
+    fi
+    if [[ $pattern == *$'\n'* ]]; then
+        echo "pattern contains a newline"; return 1
+    fi
+    if [[ $pattern == /* ]]; then
+        echo "pattern must be relative to the source folder (no leading '/')"; return 1
+    fi
+
+    pattern="${pattern%/}"   # one trailing '/' ("a1.1/") means the same as "a1.1"
+    IFS=/ read -ra segs <<< "$pattern"
+    for seg in "${segs[@]}"; do
+        if [[ -z $seg ]]; then
+            echo "pattern has an empty path level ('//')"; return 1
+        fi
+        if [[ $seg == "." || $seg == ".." ]]; then
+            echo "pattern must not contain '.' or '..' levels"; return 1
+        fi
+    done
+}
+
+# build_pattern_filters <pattern>... - fills the global array
+# PATTERN_FILTER_ARGS with the rsync arguments that restrict a transfer to
+# the given patterns (already validated, see validate_pattern).
+#
+# For `s1/s2/s3` it emits anchored rules, in this order:
+#     --include=/s1/  --include=/s1/s2/   (walk down, folders only)
+#     --include=/s1/s2/s3                (the target: file or folder)
+#     --include=/s1/s2/s3/**             (everything inside the target)
+# and, after all patterns, `--exclude=*`. The caller must place its own
+# `--exclude='.*'` BEFORE these (rsync: first matching rule wins). `-m`
+# (--prune-empty-dirs) comes first so that folders on the way to a target that
+# is missing don't get created empty (e.g. a student without that sub-folder).
+#
+# Nothing outside the matched branches is ever entered, so the only metadata
+# listed over WebDAV is each level the pattern walks - never the unmatched
+# siblings' contents - and no unmatched file data is read or transferred.
+#
+# A pattern containing `**` can match across levels, so intermediate folders
+# can't be pinned down; those get a blanket `--include=*/` (every folder is
+# walked, still only matching files are transferred).
+build_pattern_filters() {
+    PATTERN_FILTER_ARGS=(-m)
+    local pattern prefix i
+    local -a segs
+
+    for pattern in "$@"; do
+        pattern="${pattern%/}"
+
+        if [[ $pattern == *'**'* ]]; then
+            PATTERN_FILTER_ARGS+=(--include='*/' --include="/$pattern" --include="/$pattern/**")
+            continue
+        fi
+
+        IFS=/ read -ra segs <<< "$pattern"
+        prefix=""
+        for ((i = 0; i < ${#segs[@]} - 1; i++)); do
+            prefix="$prefix/${segs[i]}"
+            PATTERN_FILTER_ARGS+=(--include="$prefix/")
+        done
+        prefix="$prefix/${segs[${#segs[@]}-1]}"
+        PATTERN_FILTER_ARGS+=(--include="$prefix" --include="$prefix/**")
+    done
+
+    PATTERN_FILTER_ARGS+=(--exclude='*')
+}
+
 # ensure_signing_identity - generates (once) a local self-signed
 # code-signing certificate and imports it into the login keychain, so
 # OLATFinderHelper.app can be signed with a stable, non-ad-hoc identity -

@@ -3,15 +3,22 @@ Script for macOS to transfer files to UZH OLAT
 
 ## Usage
 ```
-olatTransfer.sh [-d] [-q] <source> <destination>
+olatTransfer.sh [-d] [-q] [-n] [-s] [-m <pattern>]... <source> <destination>
   One of source or destination must begin with /Volumes/lms.uzh.ch
   -d   Execute the final eject and disconnect steps after transfer.
   -q   Quick push (upload only): only sync top-level source folders that
        contain a file changed within the lookback window (see config.yml).
        Never deletes remote files/folders; run a normal upload for that.
+  -m   Pattern mode (upload or download): transfer only paths matching the
+       rsync-wildcard pattern, relative to the source folder. Repeatable.
+       Never deletes anything. Cannot be combined with -q.
+  -n   Dry run: show what would be transferred, change nothing.
+  -s   After an upload, delete the hidden ._name sidecar files the macOS
+       WebDAV client may have created for the items just uploaded. Off by default.
   Upload example: olatTransfer.sh "/local/path" "/Volumes/lms.uzh.ch/remote/path"
   Download example: olatTransfer.sh "/Volumes/lms.uzh.ch/remote/path" "/local/path"
   Quick upload example: olatTransfer.sh -q "/local/path" "/Volumes/lms.uzh.ch/remote/path"
+  Pattern download example: olatTransfer.sh -m "*/Participant Drop Box/a1.1" "/Volumes/lms.uzh.ch/.../Hand in" "/local/path"
 ```
 *If you omit `-d`, the WebDAV volume remains mounted after the transfer.*
 
@@ -35,6 +42,41 @@ within the last N days, and uploads just those folders.
 - See [`example-quick-upload.command`](example-quick-upload.command) for a
   template to copy per course, alongside your existing full-upload
   `.command` file.
+
+## Pattern mode (`-m`)
+
+Transfer only some paths, e.g. one assignment from every student's folder in
+OLAT's *Hand in* folder:
+
+```
+olatTransfer.sh -m "*/Participant Drop Box/a1.1" \
+    "/Volumes/lms.uzh.ch/webdav/coursefolders/<course>/_courseelementdata/Hand in" \
+    "/Users/me/Desktop/a1.1"
+```
+
+- The pattern is relative to the **source** folder, uses rsync wildcards
+  (`*` and `?` stay within one folder level, `[abc]` is a character set,
+  `**` crosses levels) and `/` between folder levels. Escape a literal
+  `* ? [ ] \` in a name with a backslash.
+- Each level of the pattern is matched in turn, so only the folders on the
+  way to a match are entered. Nothing else is read or transferred. A
+  folder that matches at the last level is copied with everything in it.
+- Students (or whatever `*` stands for) who lack the path are skipped; no
+  empty folder is created for them.
+- Works for download and upload. Never deletes anything, even for uploads.
+  Repeat `-m` for several patterns. Not combinable with `-q`.
+- Use `-n` first to see what would be transferred.
+- macOS can make its WebDAV client write a hidden `._name` file next to
+  files and folders on OLAT (it is how the client stores a
+  `com.apple.provenance` attribute, and it only happens for processes that
+  carry that attribute, e.g. runs started from the Claude app; a plain
+  Terminal doesn't). Uploads already avoid most of it by not setting
+  modification times or permissions (OLAT ignores them anyway). Add **`-s`**
+  to also delete, after the upload, the sidecars of the new files and folders
+  it just created. Without `-s` nothing is ever deleted. `-s` never touches
+  other `._` files, and downloads don't need it.
+- Offline tests: `/bin/bash tests/pattern-offline.sh`. The WebDAV-only checks
+  are in [`docs-dev/webdav-test-plan.md`](docs-dev/webdav-test-plan.md).
 
 ## Idle auto-disconnect
 

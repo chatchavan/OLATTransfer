@@ -20,11 +20,18 @@ volume:
   calls have their own specific macOS Automation permission entry instead
   of a generic one shared by every bash script on the machine. Not meant to
   be run directly (it's not even executable as a script — it's compiled).
+- `tests/pattern-offline.sh` — the one automated test: exercises `-m`/`-n`
+  and the `-q`/plain regressions against scratch trees with the
+  Keychain/mount stage cut out (see "Running / testing changes"). Run it
+  with `/bin/bash`, the same bash 3.2 the tool runs under.
 - `config.yml` — the only tunable settings (quick-push lookback window,
   idle-disconnect timing).
 
-There is no build system, package manifest, linter, or test suite — this is
-the entire project.
+There is no build system, package manifest, or linter. The only automated
+test is `tests/pattern-offline.sh`; everything involving the real WebDAV
+mount is manual (`TESTS.md`, `docs-dev/webdav-test-plan.md`). A GUI that
+generates `.command` files is designed in `docs-dev/command-maker-gui.md`
+(not built yet; it will live in its own `gui/` folder).
 
 rsync here is **macOS's built-in `openrsync`** (BSD, protocol 29), not GNU
 rsync — it has no `--update`/`-u` flag. Don't assume GNU-rsync flags are
@@ -32,7 +39,9 @@ available; check `rsync --help` on the target machine first.
 
 ## Running / testing changes
 
-There are no automated tests. `TESTS.md` is the step-by-step manual test
+Run `/bin/bash tests/pattern-offline.sh` after touching option parsing,
+the rsync calls, or `build_pattern_filters`/`validate_pattern`. It needs no
+WebDAV. Otherwise `TESTS.md` is the step-by-step manual test
 plan (quick push folder selection, and the full idle auto-disconnect
 sequence including the Finder-window and TTL self-uninstall cases) — run
 through it after touching `olatTransfer.sh`, `olat-common.sh`, or
@@ -85,7 +94,12 @@ exits early (`exit 1`) on failure, so later stages can assume earlier ones
 succeeded:
 
 1. **Option/arg parsing** — `-d` (eject WebDAV at the end), `-q` (quick push,
-   see below), plus exactly two positional args, source and destination.
+   see below), `-s` (opt-in cleanup of `._` sidecars after an upload, see
+   "Known quirks"), `-n` (dry run: `rsync -n`, summary says "Would ..."), `-m
+   <pattern>` (repeatable, see "Pattern mode" below), plus exactly two
+   positional args, source and destination. `-m`/`-q` conflicts and bad
+   patterns (`validate_pattern`) are rejected right here, before the
+   Keychain/mount, so they fail fast and can be tested offline.
 2. **Credential lookup** — reads the OLAT WebDAV username/password from the
    macOS Keychain (item `lms.uzh.ch`) via `security find-internet-password`.
    There is no credential prompt; the Keychain entry must already exist
@@ -135,6 +149,19 @@ succeeded:
      shebang (macOS's default `/bin/bash` 3.2 has `PIPESTATUS` but not
      `mapfile`/`readarray`, which is why the summary arrays are built with
      `while read` loops instead).
+   - Pattern mode (`-m`): same single rsync call as normal mode, plus the
+     arguments from `build_pattern_filters` (in `olat-common.sh`): `-m`
+     (`--prune-empty-dirs`), then anchored `--include` rules per pattern
+     level and a final `--exclude='*'`. The existing `--exclude='.*'` must
+     stay BEFORE them (first match wins). `--delete` is forced off (as in
+     `-q`). Anchored rules are used so rsync only enters folders that can
+     lead to a match; an unanchored `--include='*/'` would walk and list the
+     entire tree (still correct, much slower over WebDAV) and is only used
+     for patterns containing `**`. Names are matched byte-for-byte, so an
+     NFC-typed literal does not match an NFD-named folder (confirmed on the
+     real WebDAV mount too, which stores both forms as separate entries),
+     and `?` matches one byte, not one character (an NFC `ü` needs `??`).
+     Use `*` for non-ASCII letters.
 6. **Cleanup** — the WebDAV volume is ejected only if `-d` was passed;
    otherwise it's left mounted deliberately, to avoid tripping UZH's
    connection-rate limiting from repeated mount/unmount cycles. This is
@@ -321,3 +348,49 @@ entry instead:
   call still uses `osascript` directly under Terminal's existing
   Automation grant — that one wasn't the thing flagged as too broad, and
   narrowing it further wasn't asked for.
+
+## Known quirks seen on the real mount (2026-10-10, pattern-mode testing)
+
+- **AppleDouble sidecars (`._name`)**: the WebDAV client can't store an
+  extended attribute on the server, so whenever a process that carries
+  `com.apple.provenance` (this agent's shell, the Claude app's terminal panel,
+  Terminal windows they open; NOT a plain user Terminal) creates OR updates an
+  item on the mount, the client writes a `._<name>` file beside it with that
+  attribute inside. Visible on OLAT to everyone who sees the folder. Findings
+  (2026-10-10, real mount):
+  - Creation triggers it, even a plain `printf > file` or `mkdir`.
+  - **Setting times or permissions triggers it too.** rsync `-a` asks for both
+    on every item on every run (OLAT never keeps them, so every run shows
+    `.f..tp...`), so re-running an upload with nothing to send still created
+    sidecars. Experiment with raw rsync on fresh items: `-a`, `-rt` and `-rp`
+    each created sidecars for the file and its folder; `-rl` created none,
+    and none appeared 25 s later.
+  - `xattr -c` can't remove provenance; no rsync flag or documented
+    `mount_webdav` option turns the behaviour off; `--exclude='.*'` only stops
+    LOCAL `._` files being sent (they never were).
+  Two-part fix in `olatTransfer.sh`: (1) **uploads use `-rlvi`, not `-avi`**,
+  so no time/permission updates are requested (`--size-only` decides what to
+  send, so nothing is lost); downloads keep `-avi`. (2) For genuinely new
+  items (creation can't be avoided), **only if `-s` is given** (off by
+  default, by decision: it deletes files on the server and isn't needed from a
+  plain Terminal), `remove_upload_sidecars` (`olat-common.sh`) deletes, after
+  a real upload only, the `._<basename>` of
+  each item that run uploaded (`TRANSFERRED_FILES`) or created
+  (`CREATED_DIRS`, from `cd+++` itemize lines; in `-q` mode also the new
+  top-level folder), only if that item exists and the sidecar is a regular
+  file. No globbing: pre-existing `._` files and sidecars of untouched items
+  are left alone. It prints "Removed N ..." only when it deleted something.
+  Do not switch uploads back to `-a`. Alternative if this proves
+  insufficient: upload with `curl -T` straight to the WebDAV URL, bypassing
+  the mount.
+- **Failed items still appear in the summary**: if rsync aborts partway
+  (e.g. a name OLAT refuses, such as one containing a backslash),
+  "Uploaded N file(s)" is built from the itemize lines, which are printed
+  before the transfer of that file fails, so it can list files that were not
+  actually written. The `⚠️ rsync finished with errors` line is the reliable
+  signal. Not fixed yet.
+- **A folder missing on OLAT gets created**: with `-m` (and in normal mode)
+  an upload of `Zzz, New/Coach Return Box/a1.1/...` creates the participant
+  folder `Zzz, New` on OLAT. Use `-n` first.
+- OLAT/WebDAV refuses a backslash in names; it accepts `, [ ] * ? ' &` and
+  accented letters.

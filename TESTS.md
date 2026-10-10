@@ -11,6 +11,18 @@ calling process — an agent's own sandboxed shell is a different process
 than your Terminal and will fail with `-1743 Not authorized to send Apple
 events to Finder` even though the real thing works fine for you.
 
+## 0. Automated offline suite
+
+```bash
+/bin/bash tests/pattern-offline.sh
+```
+
+Covers pattern mode (`-m`), dry run (`-n`) and the plain/`-q` regressions
+against scratch trees, with the Keychain/mount stage removed and the volume
+prefix pointed at a temp folder. Needs no WebDAV or Terminal permissions. Run
+it first after any change to `olatTransfer.sh`/`olat-common.sh`. The checks
+that do need the real mount are in `docs-dev/webdav-test-plan.md`.
+
 ## 1. Quick push (`-q`) folder selection
 
 No WebDAV mount needed — this only exercises the local folder-scanning
