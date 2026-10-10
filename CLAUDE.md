@@ -27,7 +27,7 @@ volume:
 - `gui/` — **OLAT Command Maker**, a self-contained Electron app (own
   `package.json`, shared Electron binary, no bundler) that generates and
   previews `.command` files for `-m` transfers. Start with
-  `command-maker.command`. It never transfers anything itself: Run/Dry-run
+  `Ω run command-maker.command`. It never transfers anything itself: Run/Dry-run
   spawn `olatTransfer.sh`, and the live preview feeds the real
   `build_pattern_filters` arguments to a local `rsync -n`. Design:
   `docs-dev/command-maker-gui.md`. Tests: `cd gui && npm test`

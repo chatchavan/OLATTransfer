@@ -80,7 +80,7 @@ olatTransfer.sh -m "*/Participant Drop Box/a1.1" \
 
 ## Command Maker (GUI)
 
-`command-maker.command` (double-click) starts a small Electron app that builds
+`Ω run command-maker.command` (double-click) starts a small Electron app that builds
 `.command` files for pattern transfers. Pick a source and a destination folder
 (type, paste, drop or browse; one side must be on the mounted OLAT volume),
 click folders in the source tree to build wildcard patterns (Literal, Any `*`
