@@ -94,6 +94,30 @@ runs `npm install --ignore-scripts`). Design and behaviour:
 [`docs-dev/rsync-pattern-maker-gui.md`](docs-dev/rsync-pattern-maker-gui.md). Tests:
 `cd gui && npm test`.
 
+### Standalone app for other Macs
+
+`cd gui && npm run package` builds `gui/dist/Rsync pattern maker.app` and
+`gui/dist/Rsync pattern maker-<version>-arm64.zip` (Apple silicon, macOS 26 or
+later). The app needs neither this repository nor Node. It carries
+`olatTransfer.sh`, its helper scripts, `config.yml` and a prebuilt
+`OLATFinderHelper.app`. At each launch it installs them into
+`~/Library/Application Support/OLATTransfer/scripts`, replacing changed scripts
+but never an existing `config.yml`. Saved `.command` files point at that folder,
+so they keep working when the app is moved or updated. To change the
+quick-push or idle-disconnect settings for the app, edit the `config.yml` in that folder.
+
+On the other Mac:
+
+1. Unzip the file and move `Rsync pattern maker.app` to `/Applications`.
+2. The app is ad-hoc signed, not notarized, so the first open is blocked.
+   Open it once, then go to System Settings → Privacy & Security and click
+   **Open Anyway**. Alternatively, run
+   `xattr -dr com.apple.quarantine "/Applications/Rsync pattern maker.app"`.
+3. Create the Keychain entry described under "Preparation".
+4. On the first Run, macOS asks to let the app control Finder (to mount the
+   volume). Saved `.command` files run in Terminal, which asks for the same
+   permission.
+
 ## Idle auto-disconnect
 
 Leaving the WebDAV connection mounted (the default when you omit `-d`) is

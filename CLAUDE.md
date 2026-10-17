@@ -36,6 +36,16 @@ volume:
   settings folder in `~/Library/Application Support`) and the
   `# olat-command-maker: v1` marker in generated files keep the old name
   on purpose, so saved settings and existing `.command` files still work.
+  `npm run package` (`gui/scripts/package.mjs`) builds a standalone arm64
+  `.app` from the shared Electron binary (not `@electron/packager`, which hung
+  here). The scripts, `config.yml` and a prebuilt `OLATFinderHelper.app` go in
+  `Contents/Resources/olat`, and `gui/lib/install.js` copies them to
+  `~/Library/Application Support/OLATTransfer/scripts` on launch. In the bundle,
+  `app.isPackaged` is false because the executable is still named `Electron`, so
+  `main.js` detects the bundle by its layout. Smoke-test the build with `HOME`
+  set to a scratch folder so the install doesn't touch the real one.
+  `ensure_idle_agent` also rewrites the plist when the checker path changes, so
+  the agent follows whichever copy (repo or installed) ran last.
 - `config.yml` — the only tunable settings (quick-push lookback window,
   idle-disconnect timing).
 

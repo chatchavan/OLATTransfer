@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, clipboard, screen, Menu } = require('electron')
 const { spawn, execFile } = require('child_process')
 const fs = require('fs')
+const os = require('os')
 const path = require('path')
 
 const Command = require('./lib/command.js')
@@ -12,9 +13,19 @@ const Settings = require('./lib/settings.js')
 // CM_SCREENSHOT, CM_SCRIPT, CM_WAIT, CM_SCRIPT_PATH (stand-in for olatTransfer.sh), CM_SHOT_TARGET=dryrun, CM_TEST_MENU (id chosen in context menus).
 if (process.env.CM_USER_DATA) app.setPath('userData', process.env.CM_USER_DATA)
 
-const REPO = path.resolve(__dirname, '..')
-const SCRIPT = process.env.CM_SCRIPT_PATH || path.join(REPO, 'olatTransfer.sh')
-const COMMON = path.join(REPO, 'olat-common.sh')
+// From the repo (npm start) the scripts are the repo's own. The packaged .app carries copies
+// in Contents/Resources/olat and installs them to a fixed folder (lib/install.js).
+// app.isPackaged is false there (the executable is still called Electron), so test the layout.
+// os.homedir() follows $HOME, like olat-common.sh, so a test run can redirect it.
+const PACKAGED = __dirname === path.join(process.resourcesPath, 'app')
+const STATE_DIR = path.join(os.homedir(), 'Library', 'Application Support', 'OLATTransfer')
+const SCRIPTS_DIR = PACKAGED ? path.join(STATE_DIR, 'scripts') : path.resolve(__dirname, '..')
+if (PACKAGED) {
+  try { require('./lib/install.js').installScripts(path.join(process.resourcesPath, 'olat'), SCRIPTS_DIR, STATE_DIR) }
+  catch (err) { dialog.showErrorBox('Cannot install the OLATTransfer scripts', String((err && err.message) || err)) }
+}
+const SCRIPT = process.env.CM_SCRIPT_PATH || path.join(SCRIPTS_DIR, 'olatTransfer.sh')
+const COMMON = path.join(SCRIPTS_DIR, 'olat-common.sh')
 const OLAT_PREFIX = process.env.CM_OLAT_PREFIX || '/Volumes/lms.uzh.ch'
 
 const isOlat = (p) => typeof p === 'string' && (p === OLAT_PREFIX || p.startsWith(OLAT_PREFIX + '/'))

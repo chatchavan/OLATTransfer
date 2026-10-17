@@ -332,7 +332,9 @@ ensure_idle_agent() {
     interval_secs=$((poll_minutes * 60))
     checker_script="$SCRIPT_DIR/olat-idle-eject-check.sh"
 
-    if [[ -f "$AGENT_PLIST" ]] && grep -q "<integer>$interval_secs</integer>" "$AGENT_PLIST" 2>/dev/null; then
+    # Also rewritten when the checker moved (repo vs. the copy the packaged GUI installs).
+    if [[ -f "$AGENT_PLIST" ]] && grep -q "<integer>$interval_secs</integer>" "$AGENT_PLIST" 2>/dev/null \
+        && grep -qF "<string>$checker_script</string>" "$AGENT_PLIST" 2>/dev/null; then
         needs_write=0
     fi
 
