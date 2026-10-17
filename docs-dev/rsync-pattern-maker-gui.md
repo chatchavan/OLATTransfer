@@ -1,4 +1,4 @@
-# OLAT Command Maker: design
+# Rsync pattern maker: design
 
 Status: backend (`-m`, `-n`, `-s` in `olatTransfer.sh`) implemented and tested
 (offline suite plus the real mount, see `docs-dev/webdav-test-plan.md`). The
@@ -66,7 +66,7 @@ the GUI runs. The GUI does not mount or eject (the script does, on Run).
 Two columns, status bar at the bottom.
 
 ```
-┌ OLAT Command Maker ───────────────────────────────────────────────┐
+┌ Rsync pattern maker ───────────────────────────────────────────────┐
 │ Source [path ……………………………] [📁]   →   Destination [path ………] [📁] │
 │ ┌ Source sample ─────────────┐     ┌ Preview after transfer ──────┐ │
 │ │ tree (lazy, sampled)       │     │ merged tree, row colours     │ │

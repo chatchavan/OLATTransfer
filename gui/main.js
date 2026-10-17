@@ -65,7 +65,7 @@ function boundsOnScreen(b) {
 function createMainWindow() {
   const settings = Settings.load(app.getPath('userData'))
   const b = boundsOnScreen(settings.bounds)
-  const win = new BrowserWindow(windowOptions(Object.assign({ width: 1120, height: 820, minWidth: 900, minHeight: 620, title: 'OLAT Command Maker' }, b || {})))
+  const win = new BrowserWindow(windowOptions(Object.assign({ width: 1120, height: 820, minWidth: 900, minHeight: 620, title: 'Rsync pattern maker' }, b || {})))
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'))
   mainWindows.add(win)
   win.on('close', () => {
@@ -218,7 +218,7 @@ handle('dialog:open-command', async (event) => {
   let file = testAnswer()
   if (!file) {
     const win = BrowserWindow.fromWebContents(event.sender)
-    const r = await dialog.showOpenDialog(win, { title: 'Open a .command made by OLAT Command Maker', properties: ['openFile'], filters: [{ name: 'Command files', extensions: ['command'] }] })
+    const r = await dialog.showOpenDialog(win, { title: 'Open a .command made by Rsync pattern maker', properties: ['openFile'], filters: [{ name: 'Command files', extensions: ['command'] }] })
     file = r.canceled ? null : r.filePaths[0]
   }
   if (!file) return { path: null }

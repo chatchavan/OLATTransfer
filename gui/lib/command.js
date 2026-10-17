@@ -3,7 +3,7 @@
   if (typeof module === 'object' && module.exports) module.exports = factory(require('./shell.js'))
   else root.CMCommand = factory(root.CMShell)
 })(typeof self !== 'undefined' ? self : this, function (Shell) {
-  const MARKER = '# olat-command-maker: v1'
+  const MARKER = '# olat-command-maker: v1'   // keeps the app's old name so existing .command files still open
 
   // Arguments for olatTransfer.sh (after the script path).
   // opts: {direction, src, dest, patterns, eject, sidecar, dry}
@@ -60,7 +60,7 @@
   function parseCommand(text) {
     const lines = String(text).split('\n')
     if (!lines.some((l) => l.trim() === MARKER)) {
-      return { ok: false, error: 'This file was not made by OLAT Command Maker (no "' + MARKER + '" line).' }
+      return { ok: false, error: 'This file was not made by Rsync pattern maker (no "' + MARKER + '" line).' }
     }
     const at = lines.findIndex((l) => /^bash\s+"/.test(l))
     if (at < 0) return { ok: false, error: 'No olatTransfer.sh call found in the file.' }

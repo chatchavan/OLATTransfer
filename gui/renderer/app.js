@@ -731,7 +731,7 @@
     const res = await api.openCommand()
     if (!res.ok || !res.value.path) { if (!res.ok) S.modal = { notice: { title: 'Cannot open the file', text: res.error } }; renderModal(); return }
     const parsed = Command.parseCommand(res.value.text)
-    if (!parsed.ok) { S.modal = { notice: { title: 'Not a Command Maker file', text: parsed.error } }; renderModal(); return }
+    if (!parsed.ok) { S.modal = { notice: { title: 'Not an Rsync pattern maker file', text: parsed.error } }; renderModal(); return }
     S.src = parsed.src; S.dst = parsed.dest
     S.eject = parsed.eject; S.sidecar = parsed.sidecar
     S.patterns = parsed.patterns.map((p) => newPattern(p))

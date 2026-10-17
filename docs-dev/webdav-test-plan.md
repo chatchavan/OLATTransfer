@@ -88,7 +88,7 @@ match an NFD-named folder; an NFD literal does. Check on the real mount:
 3. Expected consequence for the GUI: patterns built by clicking an example
    (names taken verbatim from the mount, never normalised) always work;
    typed literals with non-ASCII characters may not. If the real mount
-   behaves differently from APFS, update `docs-dev/command-maker-gui.md`.
+   behaves differently from APFS, update `docs-dev/rsync-pattern-maker-gui.md`.
 
 ## W7. Special characters in names
 

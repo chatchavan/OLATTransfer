@@ -1,5 +1,5 @@
 #!/bin/bash
-# Starts OLAT Command Maker (the Electron GUI in ./gui). Double-click, or run in a Terminal.
+# Starts Rsync pattern maker (the Electron GUI in ./gui). Double-click, or run in a Terminal.
 cd "$(dirname "$0")/gui" || exit 1
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 export ELECTRON_OVERRIDE_DIST_PATH="$HOME/.electron/44.4.5"

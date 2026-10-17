@@ -24,14 +24,18 @@ volume:
   and the `-q`/plain regressions against scratch trees with the
   Keychain/mount stage cut out (see "Running / testing changes"). Run it
   with `/bin/bash`, the same bash 3.2 the tool runs under.
-- `gui/` — **OLAT Command Maker**, a self-contained Electron app (own
+- `gui/` — **Rsync pattern maker**, a self-contained Electron app (own
   `package.json`, shared Electron binary, no bundler) that generates and
   previews `.command` files for `-m` transfers. Start with
-  `Ω run command-maker.command`. It never transfers anything itself: Run/Dry-run
+  `Ω run rsync-pattern-maker.command`. It never transfers anything itself: Run/Dry-run
   spawn `olatTransfer.sh`, and the live preview feeds the real
   `build_pattern_filters` arguments to a local `rsync -n`. Design:
-  `docs-dev/command-maker-gui.md`. Tests: `cd gui && npm test`
-  (`node --test`, real bash/rsync, no WebDAV).
+  `docs-dev/rsync-pattern-maker-gui.md`. Tests: `cd gui && npm test`
+  (`node --test`, real bash/rsync, no WebDAV). It used to be called "OLAT
+  Command Maker": the package name `olat-command-maker` (it sets the
+  settings folder in `~/Library/Application Support`) and the
+  `# olat-command-maker: v1` marker in generated files keep the old name
+  on purpose, so saved settings and existing `.command` files still work.
 - `config.yml` — the only tunable settings (quick-push lookback window,
   idle-disconnect timing).
 
