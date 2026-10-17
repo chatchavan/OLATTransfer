@@ -18,6 +18,7 @@ window.UI = (() => {
     retry: '<path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
     arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+    swap: '<path d="M4 8h15M15 4l4 4-4 4M20 16H5M9 12l-4 4 4 4"/>',
     spinner: '<path d="M12 3a9 9 0 1 0 9 9"/>',
     alert: '<circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5h.01"/>'
   }

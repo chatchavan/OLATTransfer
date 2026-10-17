@@ -761,6 +761,14 @@
     else { renderAll(); schedulePreview() }
   }
 
+  async function swapPaths() {
+    if (!S.src && !S.dst) return
+    const t = S.src; S.src = S.dst; S.dst = t
+    persist()
+    await refreshInfos()
+    loadSource()
+  }
+
   async function chooseDir(side) {
     const cur = side === 'src' ? S.src : S.dst
     const res = await api.chooseDir({ title: side === 'src' ? 'Choose the source folder' : 'Choose the destination folder', defaultPath: cur || undefined })
@@ -805,11 +813,12 @@
       if (e.key === 'Escape') { if (S.modal) closeModal(); else if (S.menu) { S.menu = null; renderMenus() } }
     })
     mount($('browse-src'), ic('folder')); mount($('browse-dst'), ic('folder'))
-    mount($('arrow'), ic('arrow', 'big'))
+    mount($('arrow'), ic('arrow', 'big')); mount($('swap'), ic('swap'))
     mount($('add-pattern'), ic('plus'), 'Add pattern')
     mount($('open-cmd'), ic('folderOpen')); mount($('btn-gear'), ic('gear')); mount($('btn-play'), ic('play')); mount($('btn-save'), ic('save'))
     $('browse-src').addEventListener('click', () => chooseDir('src'))
     $('browse-dst').addEventListener('click', () => chooseDir('dst'))
+    $('swap').addEventListener('click', swapPaths)
     $('add-pattern').addEventListener('click', addPattern)
     $('open-cmd').addEventListener('click', openExisting)
     $('btn-gear').addEventListener('click', () => { S.menu = S.menu === 'gear' ? null : 'gear'; renderMenus() })
