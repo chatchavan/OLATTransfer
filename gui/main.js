@@ -94,7 +94,7 @@ function createMainWindow() {
 // ---------------------------------------------------------------- running the script
 function spawnScript(params, dry, onOut, onExit) {
   const args = [SCRIPT].concat(Command.buildArgs(Object.assign({}, params, { dry })))
-  const child = spawn('/bin/bash', args, { cwd: REPO, env: process.env, detached: true })
+  const child = spawn('/bin/bash', args, { cwd: SCRIPTS_DIR, env: process.env, detached: true })
   child.stdout.on('data', (d) => onOut(d.toString('utf8')))
   child.stderr.on('data', (d) => onOut(d.toString('utf8')))
   child.on('error', (e) => { onOut('\n' + e.message + '\n'); onExit(null) })
