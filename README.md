@@ -96,7 +96,8 @@ runs `npm install --ignore-scripts`). Design and behaviour:
 
 ### Standalone app for other Macs
 
-`cd gui && npm run package` builds `gui/dist/Rsync pattern maker.app` and
+`Ω build rsync-pattern-maker.command` (double-click), or `cd gui && npm run
+package`, builds `gui/dist/Rsync pattern maker.app` and
 `gui/dist/Rsync pattern maker-<version>-arm64.zip` (Apple silicon, macOS 26 or
 later). The app needs neither this repository nor Node. It carries
 `olatTransfer.sh`, its helper scripts, `config.yml` and a prebuilt

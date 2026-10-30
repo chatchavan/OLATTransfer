@@ -36,7 +36,8 @@ volume:
   settings folder in `~/Library/Application Support`) and the
   `# olat-command-maker: v1` marker in generated files keep the old name
   on purpose, so saved settings and existing `.command` files still work.
-  `npm run package` (`gui/scripts/package.mjs`) builds a standalone arm64
+  `npm run package` (`gui/scripts/package.mjs`, or double-click
+  `Ω build rsync-pattern-maker.command`) builds a standalone arm64
   `.app` from the shared Electron binary (not `@electron/packager`, which hung
   here). The scripts, `config.yml` and a prebuilt `OLATFinderHelper.app` go in
   `Contents/Resources/olat`, and `gui/lib/install.js` copies them to
