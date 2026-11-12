@@ -7,7 +7,7 @@ source "$SCRIPT_DIR/olat-common.sh"
 # USAGE
 
 usage() {
-    echo "Usage: $(basename "$0") [-d] [-q] [-n] [-s] [-m <pattern>]... <source> <destination>"
+    echo "Usage: $(basename "$0") [-d] [-q] [-n] [-s] [-b] [-c] [-m <pattern>]... <source> <destination>"
     echo "  One of source or destination must begin with $WEBDAV_PREFIX"
     echo "  Upload example: $(basename "$0") \"/local/path\" \"$WEBDAV_PREFIX/remote/path\""
     echo "  Download example: $(basename "$0") \"$WEBDAV_PREFIX/remote/path\" \"/local/path\""
@@ -24,6 +24,10 @@ usage() {
     echo "  -s   After an upload, delete the hidden ._name sidecar files that macOS's"
     echo "       WebDAV client may have created next to the files/folders just uploaded"
     echo "       (see README). Off by default; never touches other ._ files."
+    echo "  -b   Batch (unattended) run: no Finder dialog when mounting fails; the"
+    echo "       error goes to the output and the script exits non-zero."
+    echo "  -c   Compare files by checksum instead of size, so an edit that keeps a"
+    echo "       file's size is still sent. Reads each matched remote file once."
     exit 1
 }
 
@@ -32,17 +36,21 @@ usage() {
 
 # default: do NOT eject at the end
 DO_EJECT=0
+BATCH=0
+CHECKSUM=0
 QUICK_MODE=0
 DRY_RUN=0
 CLEAN_SIDECARS=0
 PATTERNS=()
 
-while getopts "dqnsm:" opt; do
+while getopts "dqnsbcm:" opt; do
   case $opt in
     d) DO_EJECT=1 ;;
     q) QUICK_MODE=1 ;;
     n) DRY_RUN=1 ;;
     s) CLEAN_SIDECARS=1 ;;
+    b) BATCH=1 ;;
+    c) CHECKSUM=1 ;;
     m) PATTERNS+=("$OPTARG") ;;
     *) usage ;;          # unknown option -> show help
   esac
@@ -96,6 +104,15 @@ echo "Retrieved WebDAV login info from Keychain."
 # ------------------------------------------------------------------
 # MOUNT THE WebDAV VOLUME (via AppleScript/Finder)
 
+# With -b (unattended, e.g. Watcher Runner) a failed mount must not leave a
+# modal Finder dialog behind: the error goes to stderr instead.
+if [[ $BATCH -eq 1 ]]; then
+osascript <<EOF
+tell application "Finder"
+    mount volume "https://$USERNAME:$PASSWORD@$SERVER/"
+end tell
+EOF
+else
 osascript <<EOF
 tell application "Finder"
     try
@@ -106,6 +123,7 @@ tell application "Finder"
     end try
 end tell
 EOF
+fi
 
 if [[ $? -ne 0 ]]; then
     echo "❌  Failed to mount WebDAV volume. Aborting."
@@ -197,6 +215,11 @@ fi
 RSYNC_DRY_ARGS=()
 [[ $DRY_RUN -eq 1 ]] && RSYNC_DRY_ARGS=(-n)
 
+# --size-only skips an edited file whose size did not change; -c compares
+# checksums instead (each matched remote file is read once over WebDAV).
+RSYNC_COMPARE="--size-only"
+[[ $CHECKSUM -eq 1 ]] && RSYNC_COMPARE="--checksum"
+
 echo "Source:      $SRC"
 echo "Destination: $DEST"
 echo "Direction: $DIRECTION"
@@ -265,7 +288,7 @@ if [[ $QUICK_MODE -eq 1 ]]; then
             # here for remove_upload_sidecars.
             top_dir_is_new=0
             [[ -d "$DEST/$name" ]] || top_dir_is_new=1
-            rsync $RSYNC_FLAGS --progress --inplace --size-only --exclude='.*' "${RSYNC_DRY_ARGS[@]}" "$dir/" "$DEST/$name/" | tee -a "$ITER_LOG"
+            rsync $RSYNC_FLAGS --progress --inplace $RSYNC_COMPARE --exclude='.*' "${RSYNC_DRY_ARGS[@]}" "$dir/" "$DEST/$name/" | tee -a "$ITER_LOG"
             code=${PIPESTATUS[0]}
             [[ $code -ne 0 && $code -ne 23 ]] && RSYNC_EXIT=$code
             [[ $code -eq 23 && $RSYNC_EXIT -eq 0 ]] && RSYNC_EXIT=23
@@ -280,7 +303,7 @@ if [[ $QUICK_MODE -eq 1 ]]; then
     fi
 else
     RSYNC_LOG=$(mktemp)
-    rsync $RSYNC_FLAGS --progress --inplace --size-only --exclude='.*' "${RSYNC_FILTER_ARGS[@]}" "${RSYNC_DRY_ARGS[@]}" $RSYNC_EXTRA_FLAGS "$SRC/" "$DEST/" | tee -a "$RSYNC_LOG"
+    rsync $RSYNC_FLAGS --progress --inplace $RSYNC_COMPARE --exclude='.*' "${RSYNC_FILTER_ARGS[@]}" "${RSYNC_DRY_ARGS[@]}" $RSYNC_EXTRA_FLAGS "$SRC/" "$DEST/" | tee -a "$RSYNC_LOG"
     RSYNC_EXIT=${PIPESTATUS[0]}
     extract_rsync_summary "$RSYNC_LOG" ""
     rm -f "$RSYNC_LOG"
@@ -337,3 +360,11 @@ if [[ $DO_EJECT -eq 1 ]]; then
 else
     echo "WebDAV connection remains mounted."
 fi
+
+# Exit status: rsync's own code on a real error, so a caller (Watcher Runner,
+# generated .command files) sees the failure. Code 23 (partial transfer, usually
+# extra remote student folders) stays 0, as it always has.
+if [[ $RSYNC_EXIT -ne 0 && $RSYNC_EXIT -ne 23 ]]; then
+    exit "$RSYNC_EXIT"
+fi
+exit 0

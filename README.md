@@ -15,12 +15,21 @@ olatTransfer.sh [-d] [-q] [-n] [-s] [-m <pattern>]... <source> <destination>
   -n   Dry run: show what would be transferred, change nothing.
   -s   After an upload, delete the hidden ._name sidecar files the macOS
        WebDAV client may have created for the items just uploaded. Off by default.
+  -b   Batch (unattended) run: no Finder dialog when mounting fails; the error
+       is printed and the script exits non-zero.
+  -c   Compare by checksum instead of size, so an edit that keeps a file's size
+       is still sent (each matched remote file is read once).
   Upload example: olatTransfer.sh "/local/path" "/Volumes/lms.uzh.ch/remote/path"
   Download example: olatTransfer.sh "/Volumes/lms.uzh.ch/remote/path" "/local/path"
   Quick upload example: olatTransfer.sh -q "/local/path" "/Volumes/lms.uzh.ch/remote/path"
   Pattern download example: olatTransfer.sh -m "*/Participant Drop Box/a1.1" "/Volumes/lms.uzh.ch/.../Hand in" "/local/path"
 ```
 *If you omit `-d`, the WebDAV volume remains mounted after the transfer.*
+
+Exit status: 0 on success (rsync code 23, a partial transfer, also counts as success, as
+before); rsync's own code when rsync fails; 1 for a bad command line, a Keychain or mount
+failure, or a missing source or destination. Watcher Runner uses `-b -c -m <file>` to
+upload one built page (`~/local_git/lecture-timeline-transformer/landing-page-updater/wr/`).
 
 ## Quick push (`-q`)
 

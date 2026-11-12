@@ -208,6 +208,23 @@ mkdir -p "$FAKEVOL/q"
 OUT="$(PATH="$T/shim:$PATH" /bin/bash "$H" -s -q "$T/up" "$FAKEVOL/q" 2>&1)"
 expect_files "quick push left no sidecars for uploaded items" "$FAKEVOL/q" "topic-new/inner/q.txt"
 
+echo "== single-file upload: -c sends a same-size edit, exit status on rsync errors"
+reset_dirs
+mkdir -p "$T/up" "$FAKEVOL/s"
+echo "version A" > "$T/up/page.html"; echo other > "$T/up/other.html"
+/bin/bash "$H" -m page.html "$T/up" "$FAKEVOL/s" >/dev/null 2>&1
+expect_files "-m <file> uploads only that file" "$FAKEVOL/s" "page.html"
+echo "version B" > "$T/up/page.html"            # same size, different content
+/bin/bash "$H" -m page.html "$T/up" "$FAKEVOL/s" >/dev/null 2>&1
+[[ "$(cat "$FAKEVOL/s/page.html")" == "version A" ]] && ok "without -c a same-size edit is skipped (--size-only)" || bad "without -c a same-size edit is skipped"
+OUT="$(/bin/bash "$H" -c -m page.html "$T/up" "$FAKEVOL/s" 2>&1)"; rc=$?
+[[ $rc -eq 0 && "$(cat "$FAKEVOL/s/page.html")" == "version B" ]] && ok "-c sends a same-size edit, exit 0" || bad "-c sends a same-size edit" "rc=$rc $OUT"
+chmod a-w "$FAKEVOL/s" "$FAKEVOL/s/page.html"
+echo "version C, longer" > "$T/up/page.html"
+OUT="$(/bin/bash "$H" -c -m page.html "$T/up" "$FAKEVOL/s" 2>&1)"; rc=$?
+chmod u+w "$FAKEVOL/s" "$FAKEVOL/s/page.html"
+[[ $rc -ne 0 && $rc -ne 23 ]] && ok "rsync error gives a non-zero exit ($rc)" || bad "rsync error gives a non-zero exit" "rc=$rc $OUT"
+
 echo "== info: Unicode normalisation (not asserted; see docs-dev/webdav-test-plan.md)"
 reset_dirs
 NFD="$(printf 'Mu\xcc\x88ller')"; NFC="$(printf 'M\xc3\xbcller')"
